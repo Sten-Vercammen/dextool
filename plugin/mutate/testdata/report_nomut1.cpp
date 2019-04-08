@@ -15,5 +15,21 @@ const char* to_be_mutated(int var1_long_text, int var2_long_text) {
         break;
     }
 
+    // the important is that NOMUT is on the last line. That has been a problem because it is
+    // "missed".
+    gun("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+        "oooooooooooooo",
+        "barrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+        "rrr",
+        "bun"); // NOMUT
+
+    Wun wun;
+    wun.major(
+        "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+        "oooooooooooooo",
+        "barrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+        "rrr",
+        "bun"); // NOMUT
+
     return "false"; //       NOMUT
 }

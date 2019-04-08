@@ -112,7 +112,7 @@ struct FileIndex {
 
         const out_path = buildPath(logFilesDir, report).Path.AbsolutePath;
 
-        ctx = FileCtx.make(original);
+        ctx = FileCtx.make(original, fr.id);
         ctx.processFile = fr.file;
         ctx.out_ = File(out_path, "w");
         ctx.span = Spanner(tokenize(fio.getOutputDir, fr.file));
@@ -148,11 +148,13 @@ struct FileIndex {
         import std.array : appender;
         import std.conv : to;
         import std.range : repeat;
+        import dextool.plugin.mutate.backend.database.type : MutantMetaData;
 
         static struct MData {
             MutationId id;
             FileMutant.Text txt;
             Mutation mut;
+            MutantMetaData metaData;
         }
 
         static string styleHover(MutationId this_mut, const(FileMutant) m) {
@@ -163,22 +165,26 @@ struct FileIndex {
 
         Set!MutationId ids;
         auto muts = appender!(MData[])();
-        uint line = 1;
-        uint column = 1;
+        // this is the last location. It is used to calculate the num of
+        // newlines, detect when a line changes etc.
+        auto lastLoc = SourceLoc(1, 1);
 
         auto root = ctx.doc.mainBody;
         root.addChild("span", "1:").addClass("line_nr");
         foreach (const s; ctx.span.toRange) {
-            if (s.tok.loc.line > line)
-                column = 1;
+            if (s.tok.loc.line > lastLoc.line) {
+                lastLoc.column = 1;
+            }
 
             auto meta = MetaSpan(s.muts);
 
-            foreach (const i; 0 .. max(0, s.tok.loc.line - line)) {
+            foreach (const i; 0 .. max(0, s.tok.loc.line - lastLoc.line)) {
                 root.addChild("br");
-                root.addChild("span", format("%s:", line + i + 1)).addClass("line_nr");
+                // force a newline in the generated html to improve readability
+                root.appendText("\n");
+                root.addChild("span", format("%s:", lastLoc.line + i + 1)).addClass("line_nr");
             }
-            const spaces = max(0, s.tok.loc.column - column);
+            const spaces = max(0, s.tok.loc.column - lastLoc.column);
             root.addChild(new RawSource(ctx.doc, format("%-(%s%)", "&nbsp;".repeat(spaces))));
 
             auto d0 = root.addChild("div").setAttribute("style", "display: inline;");
@@ -196,7 +202,7 @@ struct FileIndex {
             foreach (m; s.muts) {
                 if (!ids.contains(m.id)) {
                     ids.add(m.id);
-                    muts.put(MData(m.id, m.txt, m.mut));
+                    muts.put(MData(m.id, m.txt, m.mut, db.getMutantationMetaData(m.id)));
                     const inside_fly = format(`%-(%s %)`, s.muts.map!(a => styleHover(m.id, a)))
                         .toJson;
                     const fly = format(`fly(event, %s)`, inside_fly);
@@ -211,21 +217,29 @@ struct FileIndex {
                 }
             }
 
-            line = s.tok.locEnd.line;
-            column = s.tok.locEnd.column;
+            lastLoc = s.tok.locEnd;
         }
 
         with (root.addChild("script")) {
             import dextool.plugin.mutate.backend.report.utility : window;
 
+            // force a newline in the generated html to improve readability
+            appendText("\n");
             addChild(new RawSource(ctx.doc, format("var g_mutids = [%(%s,%)];",
                     muts.data.map!(a => a.id))));
+            appendText("\n");
             addChild(new RawSource(ctx.doc, format("var g_muts_orgs = [%(%s,%)];",
                     muts.data.map!(a => window(a.txt.original)))));
+            appendText("\n");
             addChild(new RawSource(ctx.doc, format("var g_muts_muts = [%(%s,%)];",
                     muts.data.map!(a => window(a.txt.mutation)))));
+            appendText("\n");
             addChild(new RawSource(ctx.doc, format("var g_muts_st = [%(%s,%)];",
                     muts.data.map!(a => a.mut.status.to!string))));
+            appendText("\n");
+            addChild(new RawSource(ctx.doc, format("var g_muts_meta = [%(%s,%)];",
+                    muts.data.map!(a => format("%(%s,%)", a.metaData.byKey)))));
+            appendText("\n");
         }
 
         try {
@@ -284,7 +298,8 @@ string toJson(string s) {
 }
 
 struct FileCtx {
-    import std.stdio;
+    import std.stdio : File;
+    import dextool.plugin.mutate.backend.database : FileId;
 
     Path processFile;
     File out_;
@@ -293,7 +308,10 @@ struct FileCtx {
 
     Document doc;
 
-    static FileCtx make(string title) @trusted {
+    /// Database ID for this file.
+    FileId fileId;
+
+    static FileCtx make(string title, FileId id) @trusted {
         import dextool.plugin.mutate.backend.report.html.js;
         import dextool.plugin.mutate.backend.report.html.tmpl;
 
@@ -309,6 +327,8 @@ struct FileCtx {
         s.addChild(new RawSource(r.doc, js_file));
 
         r.doc.mainBody.appendHtml(tmplIndexBody);
+
+        r.fileId = id;
 
         return r;
     }
@@ -327,7 +347,6 @@ auto tokenize(AbsolutePath base_dir, Path f) @trusted {
 
 struct FileMutant {
 nothrow:
-
     static struct Text {
         /// the original text that covers the offset.
         string original;
@@ -626,7 +645,9 @@ void toIndex(FileIndex[] files, Element root, string htmlFileDir) @trusted {
     import std.conv : to;
     import std.path : buildPath;
 
-    auto tbl = tmplDefaultTable(root, ["Path", "Score", "Alive", "NoMut", "Total"]);
+    auto tbl = tmplDefaultTable(root, [
+            "Path", "Score", "Alive", "NoMut", "Total"
+            ]);
 
     // Users are not interested that files that contains zero mutants are shown
     // in the list. It is especially annoying when they are marked with dark

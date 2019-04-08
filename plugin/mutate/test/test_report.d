@@ -380,7 +380,7 @@ class ShallTagLinesWithNoMutAttr : LinesWithNoMut {
         auto fid2 = db.getFileId(file2);
         fid.isNull.shouldBeFalse;
         fid2.isNull.shouldBeFalse;
-        foreach (line; [11,12,14,18])
+        foreach (line; [11,12,14,24,32])
             db.getLineMetadata(fid, SourceLoc(line,0)).shouldEqual(LineMetadata(fid, line, LineAttr.noMut));
         foreach (line; [8,9])
             db.getLineMetadata(fid, SourceLoc(line,0)).contains(LineAttr.noMut).shouldBeFalse;
@@ -436,5 +436,69 @@ class ShallReportMutationScoreAdjustedByNoMut : LinesWithNoMut {
             "Killed by compiler: 0",
             "Suppressed (nomut): 10 (0.385",
         ]).shouldBeIn(markdown.stdout);
+    }
+}
+
+class ShallReportHtmlMutationScoreAdjustedByNoMut : LinesWithNoMut {
+    override void test() {
+        mixin(EnvSetup(globalTestdir));
+        precondition(testEnv);
+
+        auto db = Database.make((testEnv.outdir ~ defaultDb).toString);
+
+        foreach (i; 0 .. 15)
+            db.updateMutation(MutationId(i), Mutation.Status.killed, 5.dur!"msecs", null);
+        foreach (i; 15 .. 30)
+            db.updateMutation(MutationId(i), Mutation.Status.alive, 5.dur!"msecs", null);
+
+        makeDextoolReport(testEnv, testData.dirName)
+            .addArg(["--section", "summary"])
+            .addArg(["--style", "html"])
+            .addArg(["--logdir", testEnv.outdir.toString])
+            .run;
+
+        // assert
+        testConsecutiveSparseOrder!SubStr([
+            "Mutation Score <b>0.808</b>",
+            "Alive",
+            "15",
+            "Killed",
+            "11",
+            "Timeout",
+            "0",
+            "Total",
+            "26",
+            "Killed by compiler",
+            "0",
+            "NoMut",
+            "10",
+            "NoMut/total",
+            "0.38",
+        ]).shouldBeIn(File(buildPath(testEnv.outdir.toString, "html", "stats.html")).byLineCopy.array);
+    }
+}
+
+class ShallReportHtmlNoMutForMutantsInFileView : LinesWithNoMut {
+    override void test() {
+        mixin(EnvSetup(globalTestdir));
+        precondition(testEnv);
+
+        auto db = Database.make((testEnv.outdir ~ defaultDb).toString);
+
+        foreach (i; 0 .. 15)
+            db.updateMutation(MutationId(i), Mutation.Status.killed, 5.dur!"msecs", null);
+        foreach (i; 15 .. 30)
+            db.updateMutation(MutationId(i), Mutation.Status.alive, 5.dur!"msecs", null);
+
+        makeDextoolReport(testEnv, testData.dirName)
+            .addArg(["--section", "summary"])
+            .addArg(["--style", "html"])
+            .addArg(["--logdir", testEnv.outdir.toString])
+            .run;
+
+        // assert
+        testConsecutiveSparseOrder!SubStr([
+            `var g_muts_meta = ["","","","","","","","","","","","","","","","","","","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","","","","","","","","","noMut","","","","","","","","","","noMut"]`
+        ]).shouldBeIn(File(buildPath(testEnv.outdir.toString, "html", "files", "build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html")).byLineCopy.array);
     }
 }

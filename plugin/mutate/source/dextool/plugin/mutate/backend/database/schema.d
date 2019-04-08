@@ -155,6 +155,7 @@ struct RawSrcMetadata {
 // t2 = mutationPointTable
 // t3 = filesTable
 void makeSrcMetadataView(ref Microrm db) {
+    // check if a NOMUT is on or between the start and end of a mutant.
     immutable src_metadata_v1_tbl = "CREATE VIEW %s
         AS
         SELECT
@@ -165,8 +166,8 @@ void makeSrcMetadataView(ref Microrm db) {
         (SELECT count(*) FROM %s in_t0, %s in_t1
             WHERE
             in_t0.file_id = in_t1.file_id AND
-            in_t0.line = in_t1.line AND
-            t2.line = in_t1.line) AS nomut
+            t0.mp_id = in_t0.id AND
+            (in_t1.line BETWEEN in_t0.line AND in_t0.line_end)) AS nomut
         FROM %s t0, %s t1, %s t2, %s t3
         WHERE
         t0.mp_id = t2.id AND
@@ -177,6 +178,25 @@ void makeSrcMetadataView(ref Microrm db) {
     db.run(format(src_metadata_v1_tbl, srcMetadataTable, mutationPointTable,
             rawSrcMetadataTable, mutationTable, mutationStatusTable,
             mutationPointTable, filesTable));
+}
+
+// Reconstruct the view in Microrm.
+@TableName(srcMetadataTable)
+struct SrcMetadataTbl {
+    @ColumnName("mut_id")
+    long mutationId;
+
+    @ColumnName("st_id")
+    long mutationStatusId;
+
+    @ColumnName("mp_id")
+    long mutationPointId;
+
+    @ColumnName("file_id")
+    long fileId;
+
+    @ColumnName("nomut")
+    long nomutCount;
 }
 
 @TableName(schemaVersionTable)
