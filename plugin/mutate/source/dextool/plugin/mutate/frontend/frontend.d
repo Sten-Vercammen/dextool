@@ -266,13 +266,18 @@ ExitStatusType modeInitConfig(ref ArgParser conf) @safe {
     return ExitStatusType.Errors;
 }
 
-ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) {
+// should not be trusted, temporary for mutant schemata testing
+ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
     import dextool.plugin.mutate.backend : runAnalyzer;
     import dextool.plugin.mutate.frontend.argparser : printFileAnalyzeHelp;
 
     printFileAnalyzeHelp(conf);
+    ExitStatusType est = runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
 
-    return runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
+    import mutantschemata;
+    schemata();
+
+    return est;
 }
 
 ExitStatusType modeGenerateMutant(ref ArgParser conf, ref DataAccess dacc) {
