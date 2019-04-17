@@ -271,11 +271,21 @@ ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
     import dextool.plugin.mutate.backend : runAnalyzer;
     import dextool.plugin.mutate.frontend.argparser : printFileAnalyzeHelp;
 
+    // leaving this code ensures dextool still work the same way
     printFileAnalyzeHelp(conf);
     ExitStatusType est = runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
 
+    // call the schemataApi
+    Path[] files = dacc.db.getFiles();
+    Path db = Path("test_db");
+
     import mutantschemata;
-    schemata();
+    SchemataApi sa = makeSchemata(db);
+
+    foreach (f; files){
+        sa.runSchemata(f);
+    }
+    sa.apiClose();
 
     return est;
 }

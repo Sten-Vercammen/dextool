@@ -1,7 +1,10 @@
-int externInsert();
-void externSelect();
+class SchemataApiCpp {
+public:
+    virtual void apiInsert();
+    virtual void apiSelect();
+};
 
-void runSchemata(){
-    externInsert();
-    externSelect();
+void runSchemataCpp(SchemataApiCpp *sac){
+    sac->apiInsert();
+    sac->apiSelect();
 }

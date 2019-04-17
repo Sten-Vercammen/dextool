@@ -22,18 +22,23 @@ Mutant schema provides:
 
 Meant to function as an api for schemata using and providing schemata with db
 */
-
 module mutantschemata.api;
+
+// imports for easier testing
+import std.conv : text, to;
+import std.range;
+import std.algorithm;
+import std.array;
+import std.stdio;
 
 import logger = std.experimental.logger;
 
 import microrm.exception;
 import microrm.queries;
 import microrm.schema;
-/*import dextool.plugin.mutate.backend.type: Mutation, SourceLoc, Offset;
-
 import dextool.type: Path;
 
+/*import dextool.plugin.mutate.backend.type: Mutation, SourceLoc, Offset;
 
 struct SchemataMutant {
     SourceLoc loc;
@@ -42,11 +47,10 @@ struct SchemataMutant {
     int inject;
     // string code; //could be stored in SchemataFile (same for all mutants in one file)
 }
-
 struct SchemataFile {
-    SchemataMutant[] mutants;
     Path fpath;
-    string code;
+    SchemataMutant[] mutants;
+    int[] inject;
 }*/
 
 struct TestStruct {
@@ -54,78 +58,48 @@ struct TestStruct {
     int y;
 }
 
-// imports for easier testing as of now
-import std.conv : text, to;
-import std.range;
-import std.algorithm;
-import std.array;
-import std.stdio;
-
-// Extern D functions callable by .cpp-files
-extern (C++) int externInsert(){
-    API api = API("Totally_test_db");
-    return api.insertAPI();
+SchemataApi makeSchemata(Path db){
+    SchemataApi sa = new SchemataApi(db);
+    return sa;
 }
 
-extern (C++) void externSelect(){
-    API api = API("Totally_test_db");
-    api.selectAPI();
+// C++ interface
+extern (C++) interface SchemataApiCpp {
+    void apiInsert();
+    void apiSelect();
 }
 
 // Extern C++ function callable by D-files
-extern (C++) void runSchemata();
+extern (C++) void runSchemataCpp(SchemataApiCpp);
 
-void schemata(){
-    runSchemata();
-}
-
-struct API {
-
-    //private Path fpath;
-    //private Mutation[] ops;
+// D class callable by C++ code
+class SchemataApi: SchemataApiCpp {
     private Microrm db;
 
-    this(string dbpath){
-        db = Microrm(dbpath);
+    this(string path){
+        db = Microrm(path);
         db.run(buildSchema!TestStruct);
-    }
-
-    int insertAPI(){
-        // testcode for interfacing with c++ code and microrm
-        writeln("inserting!");
         db.run(delete_!TestStruct);
-
-        for (int i = 0; i < 10; i++){
-            for (int j = 0; j < 10; j++){
-                db.run(insert!TestStruct.insert, TestStruct(i, j));
-            }
-        }
-        return 0;
     }
-
-    void selectAPI(){
-        // testcode for interfacing with c++ code and microrm
+    extern (C++) void apiInsert(){
+        import std.random;
+        auto rnd = Random(unpredictableSeed);
+        writeln("inserting!");
+        db.run(insert!TestStruct.insert, TestStruct(uniform(0, 1024, rnd), uniform(0, 1024, rnd)));
+    }
+    extern (C++) void apiSelect(){
         writeln("selecting!");
-
         auto tests = db.run(select!TestStruct).array;
 
         foreach (t; tests){
             writeln(t);
         }
     }
-    /*
-    this(Path filepath, Mutation[] operators, string dbpath){
-        this.fpath = filepath;
-        this.ops = operators;
-        this.db = Microrm(dbpath);
-    }*/
-
-    /*
-    Path getFilepath(){
-        return this.fpath;
+    void runSchemata(Path file){
+        runSchemataCpp(this);
     }
-
-    Mutation[] getOperators(){
-        return this.ops;
-    }*/
+    void apiClose(){
+        db.close();
+    }
+    // TODO: need to use mutant and not TestStruct
 }
