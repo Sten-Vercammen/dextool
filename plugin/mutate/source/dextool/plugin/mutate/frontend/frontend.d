@@ -277,7 +277,7 @@ ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
 
     // call the schemataApi
     Path[] files = dacc.db.getFiles();
-    Path db = Path("test_db");
+    Path db = Path("dextool_mutate.sqlite3");
 
     import mutantschemata;
     SchemataApi sa = makeSchemata(db);

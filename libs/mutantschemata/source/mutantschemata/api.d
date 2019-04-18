@@ -38,7 +38,8 @@ import microrm.queries;
 import microrm.schema;
 import dextool.type: Path;
 
-/*import dextool.plugin.mutate.backend.type: Mutation, SourceLoc, Offset;
+import dextool.plugin.mutate.backend.type: Mutation, SourceLoc, Offset;
+import dextool.plugin.mutate.backend.database.schema: MutationTbl, MutationPointTbl;
 
 struct SchemataMutant {
     SourceLoc loc;
@@ -51,11 +52,6 @@ struct SchemataFile {
     Path fpath;
     SchemataMutant[] mutants;
     int[] inject;
-}*/
-
-struct TestStruct {
-    int x;
-    int y;
 }
 
 SchemataApi makeSchemata(Path db){
@@ -74,6 +70,10 @@ extern (C++) void runSchemataCpp(SchemataApiCpp);
 
 // D class callable by C++ code
 class SchemataApi: SchemataApiCpp {
+    struct TestStruct {
+        int x;
+        int y;
+    }
     private Microrm db;
 
     this(string path){
@@ -88,11 +88,22 @@ class SchemataApi: SchemataApiCpp {
         db.run(insert!TestStruct.insert, TestStruct(uniform(0, 1024, rnd), uniform(0, 1024, rnd)));
     }
     extern (C++) void apiSelect(){
+        apiSelect!(TestStruct);
+        apiSelect!(MutationPointTbl, "id == 100");
+    }
+    auto apiSelect(T)(){
         writeln("selecting!");
-        auto tests = db.run(select!TestStruct).array;
-
-        foreach (t; tests){
-            writeln(t);
+        auto res = db.run(select!T).array;
+        foreach (r; res){
+            writeln(r);
+        }
+        return res;
+    }
+    void apiSelect(T, string condition)(){
+        writeln("selecting with condition!");
+        auto res = db.run(select!(T).where(condition)).array;
+        foreach (r; res){
+            writeln(r);
         }
     }
     void runSchemata(Path file){
