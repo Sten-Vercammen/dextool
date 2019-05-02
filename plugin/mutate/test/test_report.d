@@ -174,7 +174,7 @@ unittest {
     ]).shouldBeIn(r.stdout);
 }
 
-@(testId ~ "shall report test cases with how many mutants killed correctly counting the sum of mutants to as two")
+@(testId ~ "shall report test cases with how many mutants killed correctly counting the sum of mutants as two")
 unittest {
     // regression that the count of mutations are the total are correct (killed+timeout+alive)
     import dextool.plugin.mutate.backend.type : TestCase;
@@ -208,11 +208,11 @@ unittest {
         .run;
 
     testConsecutiveSparseOrder!SubStr([
-        "| Percentage | Count | TestCase | Location |",
-        "|------------|-------|----------|----------|",
-        "| 80         | 4     | tc_2     |          |",
-        "| 40         | 2     | tc_3     |          |",
-        "| 40         | 2     | tc_1     |          |",
+        "| Percentage | Count | TestCase |",
+        "|------------|-------|----------|",
+        "| 80         | 4     | tc_2     |",
+        "| 40         | 2     | tc_3     |",
+        "| 40         | 2     | tc_1     |",
     ]).shouldBeIn(r.stdout);
 }
 
@@ -368,6 +368,9 @@ class LinesWithNoMut : SimpleAnalyzeFixture {
 
 class ShallTagLinesWithNoMutAttr : LinesWithNoMut {
     override void test() {
+        import sumtype;
+        import dextool.plugin.mutate.backend.database.type;
+
         mixin(EnvSetup(globalTestdir));
         precondition(testEnv);
 
@@ -380,10 +383,16 @@ class ShallTagLinesWithNoMutAttr : LinesWithNoMut {
         auto fid2 = db.getFileId(file2);
         fid.isNull.shouldBeFalse;
         fid2.isNull.shouldBeFalse;
-        foreach (line; [11,12,14,24,32])
-            db.getLineMetadata(fid, SourceLoc(line,0)).shouldEqual(LineMetadata(fid, line, LineAttr.noMut));
+        foreach (line; [11,12,14,24,32]) {
+            auto m = db.getLineMetadata(fid, SourceLoc(line,0));
+            m.attr.match!((NoMetadata a) {shouldBeFalse(true);},
+                     (NoMut) {
+                         m.id.shouldEqual(fid);
+                         m.line.shouldEqual(line);
+            });
+        }
         foreach (line; [8,9])
-            db.getLineMetadata(fid, SourceLoc(line,0)).contains(LineAttr.noMut).shouldBeFalse;
+            db.getLineMetadata(fid, SourceLoc(line,0)).isNoMut.shouldBeFalse;
     }
 }
 
@@ -498,7 +507,91 @@ class ShallReportHtmlNoMutForMutantsInFileView : LinesWithNoMut {
 
         // assert
         testConsecutiveSparseOrder!SubStr([
-            `var g_muts_meta = ["","","","","","","","","","","","","","","","","","","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","noMut","","","","","","","","","noMut","","","","","","","","","","noMut"]`
+            `var g_muts_meta = ["","","","","","","","","","","","","","","","","","","nomut","nomut","nomut","nomut","nomut","nomut","nomut","nomut","nomut","nomut","","","","","","","","","nomut","","","","","","","","","","nomut"]`
         ]).shouldBeIn(File(buildPath(testEnv.outdir.toString, "html", "files", "build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html")).byLineCopy.array);
+    }
+}
+
+class ShallReportHtmlNoMutSummary : LinesWithNoMut {
+    override void test() {
+        mixin(EnvSetup(globalTestdir));
+        precondition(testEnv);
+
+        auto db = Database.make((testEnv.outdir ~ defaultDb).toString);
+
+        foreach (i; 0 .. 15)
+            db.updateMutation(MutationId(i), Mutation.Status.killed, 5.dur!"msecs", null);
+        foreach (i; 15 .. 30)
+            db.updateMutation(MutationId(i), Mutation.Status.alive, 5.dur!"msecs", null);
+
+        makeDextoolReport(testEnv, testData.dirName)
+            .addArg(["--section", "summary"])
+            .addArg(["--style", "html"])
+            .addArg(["--logdir", testEnv.outdir.toString])
+            .run;
+
+        // assert
+        testConsecutiveSparseOrder!SubStr([
+            `<h2>group1</h2>`,
+            `<a href="files/build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html`,
+            `<br`,
+            `with comment`
+        ]).shouldBeIn(File(buildPath(testEnv.outdir.toString, "html", "nomut.html")).byLineCopy.array);
+
+        // mutants should only be reported one time.
+        testConsecutiveSparseOrder!SubStr([
+            `files/build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html#28`,
+            `files/build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html#28`,
+            `files/build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html#29`,
+            `files/build_plugin_mutate_plugin_testdata_report_nomut1.cpp.html#29`,
+        ]).shouldNotBeIn(File(buildPath(testEnv.outdir.toString, "html", "nomut.html")).byLineCopy.array);
+    }
+}
+
+class ShallReportHtmlTestCaseSimilarity : LinesWithNoMut {
+    override void test() {
+        mixin(EnvSetup(globalTestdir));
+        precondition(testEnv);
+
+        auto db = Database.make((testEnv.outdir ~ defaultDb).toString);
+
+        import dextool.plugin.mutate.backend.type : TestCase;
+
+        // Arrange
+        const tc1 = TestCase("tc_1");
+        const tc2 = TestCase("tc_2");
+        const tc3 = TestCase("tc_3");
+        // tc1: [1,3,8,12,15]
+        // tc2: [1,8,12,15]
+        // tc3: [1,12]
+        db.updateMutation(MutationId(1), Mutation.Status.killed, 5.dur!"msecs", [tc1,tc2,tc3]);
+        db.updateMutation(MutationId(3), Mutation.Status.killed, 5.dur!"msecs", [tc1]);
+        db.updateMutation(MutationId(8), Mutation.Status.killed, 5.dur!"msecs", [tc1,tc2]);
+        db.updateMutation(MutationId(12), Mutation.Status.killed, 5.dur!"msecs", [tc1,tc2,tc3]);
+        db.updateMutation(MutationId(15), Mutation.Status.killed, 5.dur!"msecs", [tc1,tc2]);
+
+        // Act
+        makeDextoolReport(testEnv, testData.dirName)
+            .addArg(["--style", "html"])
+            .addArg(["--section", "tc_similarity"])
+            .addArg(["--logdir", testEnv.outdir.toString])
+            .run;
+        testConsecutiveSparseOrder!SubStr([
+            `<h2>tc_1</h2>`,
+            `<td>tc_2</td>`,
+            `<td>0.667</td>`,
+            `<td>tc_3</td>`,
+            `<td>0.333</td>`,
+            `<h2>tc_2</h2>`,
+            `<td>tc_1</td>`,
+            `<td>1.00</td>`,
+            `<td>tc_3</td>`,
+            `<td>0.500</td>`,
+            `<h2>tc_3</h2>`,
+            `<td>tc_1</td>`,
+            `<td>1.00</td>`,
+            `<td>tc_2</td>`,
+            `<td>1.00</td>`,
+        ]).shouldBeIn(File(buildPath(testEnv.outdir.toString, "html", "test_case_similarity.html")).byLineCopy.array);
     }
 }

@@ -58,8 +58,10 @@ ReportSection[] toSections(const ReportLevel l) {
         secs = [summary, mut_stat, tc_killed_no_mutants, tc_full_overlap, alive];
         break;
     case ReportLevel.all:
-        secs = [summary, mut_stat, all_mut, tc_killed,
-            tc_killed_no_mutants, tc_full_overlap];
+        secs = [
+            summary, mut_stat, all_mut, tc_killed, tc_killed_no_mutants,
+            tc_full_overlap
+        ];
         break;
     }
 
@@ -110,30 +112,38 @@ void reportMutationSubtypeStats(ref const long[MakeMutationTextResult] mut_stat,
 /** Update the table with the score of test cases and how many mutants they killed.
  *
  * Params:
- *  mut_stat = holder of the raw statistics data to derive the mapping from
- *  total = total number of mutants
+ *  db = ?
+ *  kinds = type of mutants to count for the test case
  *  take_ = how many from the top should be moved to the table
+ *  sort_order = ctrl if the top or bottom of the test cases should be reported
  *  tbl = table to write the data to
  */
-void reportTestCaseStats(ref const long[TestCase] mut_stat, const long total,
-        const long take_, const ReportKillSortOrder sort_order, ref Table!4 tbl) @safe nothrow {
-    import std.algorithm : sort;
+void reportTestCaseStats(ref Database db, const Mutation.Kind[] kinds,
+        const long take_, const ReportKillSortOrder sort_order, ref Table!3 tbl) @safe nothrow {
+    import std.algorithm : sort, map;
     import std.array : array;
     import std.conv : to;
     import std.range : take, retro;
+    import std.typecons : Tuple;
+    import dextool.plugin.mutate.backend.database : spinSqlQuery;
+    import dextool.plugin.mutate.backend.database.type : TestCaseInfo;
+
+    alias TcInfo = Tuple!(string, "name", TestCaseInfo, "tc");
+
+    const total = spinSqlQuery!(() { return db.totalMutants(kinds).count; });
 
     // nothing to do. this also ensure that we do not divide by zero.
     if (total == 0)
         return;
 
     static bool cmp(T)(ref T a, ref T b) {
-        if (a.value > b.value)
+        if (a.tc.killedMutants > b.tc.killedMutants)
             return true;
-        else if (a.value < b.value)
+        else if (a.tc.killedMutants < b.tc.killedMutants)
             return false;
-        else if (a.key > b.key)
+        else if (a.name > b.name)
             return true;
-        else if (a.key < b.key)
+        else if (a.name < b.name)
             return false;
         return false;
     }
@@ -147,17 +157,130 @@ void reportTestCaseStats(ref const long[TestCase] mut_stat, const long total,
         }
     }
 
-    foreach (v; takeOrder(mut_stat.byKeyValue.array.sort!cmp)) {
+    const test_cases = spinSqlQuery!(() { return db.getDetectedTestCases; });
+
+    foreach (v; takeOrder(test_cases.map!(a => TcInfo(a.name, spinSqlQuery!(() {
+                return db.getTestCaseInfo(a, kinds);
+            })))
+            .array
+            .sort!cmp)) {
         try {
-            auto percentage = (cast(double) v.value / cast(double) total) * 100.0;
+            auto percentage = (cast(double) v.tc.killedMutants / cast(double) total) * 100.0;
             typeof(tbl).Row r = [
-                percentage.to!string, v.value.to!string, v.key.name, v.key.location
+                percentage.to!string, v.tc.killedMutants.to!string, v.name
             ];
             tbl.put(r);
         } catch (Exception e) {
             logger.warning(e.msg).collectException;
         }
     }
+}
+
+/** The result of analysing the test cases to see how similare they are to each
+ * other.
+ */
+class TestCaseSimilarityAnalyse {
+    import dextool.plugin.mutate.backend.type : TestCase;
+
+    static struct Similarity {
+        TestCase testCase;
+        double similarity;
+        /// Mutants that are similare between `testCase` and the parent.
+        MutationId[] intersection;
+        /// Unique mutants that are NOT verified by `testCase`.
+        MutationId[] difference;
+    }
+
+    Similarity[][TestCase] similarities;
+}
+
+/// The result of the similarity analyse
+private struct Similarity {
+    /// The quota |A intersect B| / |A|. Thus it is how similare A is to B. If
+    /// B ever fully encloses A then the score is 1.0.
+    double similarity;
+    MutationId[] intersection;
+    MutationId[] difference;
+}
+
+// The set similairty measures how much of lhs is in rhs. This is a
+// directional metric.
+private Similarity setSimilarity(MutationId[] lhs_, MutationId[] rhs_) {
+    import std.array : array;
+    import dextool.set;
+
+    auto lhs = setFromList(lhs_);
+    auto rhs = setFromList(rhs_);
+    auto intersect = lhs.intersect(rhs);
+    auto diff = lhs.setDifference(rhs);
+    return Similarity(cast(double) intersect.length / cast(double) lhs.length,
+            intersect.byKey.array, diff.byKey.array);
+}
+
+/** Analyse the similarity between test cases.
+ *
+ * TODO: the algorithm used is slow. Maybe matrix representation and sorted is better?
+ *
+ * Params:
+ *  db = ?
+ *  kinds = mutation kinds to use in the distance analyze
+ *  limit = limit the number of test cases to the top `limit`.
+ */
+TestCaseSimilarityAnalyse reportTestCaseSimilarityAnalyse(ref Database db,
+        const Mutation.Kind[] kinds, ulong limit) @safe {
+    import std.algorithm : map, filter;
+    import std.array : array, appender;
+    import std.container.binaryheap;
+    import std.conv : to;
+    import std.range : take;
+    import std.typecons : Tuple;
+    import dextool.cachetools;
+    import dextool.plugin.mutate.backend.database : spinSqlQuery;
+    import dextool.plugin.mutate.backend.database.type : TestCaseInfo, TestCaseId;
+
+    // TODO: reduce the code duplication of the caches.
+    // The DB lookups must be cached or otherwise the algorithm becomes too slow for practical use.
+
+    MutationId[][TestCaseId] kill_cache2;
+    MutationId[] getKills(TestCaseId id) @trusted {
+        return kill_cache2.require(id, spinSqlQuery!(() {
+                return db.getTestCaseMutantKills(id, kinds);
+            }));
+    }
+
+    TestCase[TestCaseId] tc_cache2;
+    TestCase getTestCase(TestCaseId id) @trusted {
+        return tc_cache2.require(id, spinSqlQuery!(() {
+                return db.getTestCase(id);
+            }));
+    }
+
+    alias TcKills = Tuple!(TestCaseId, "id", MutationId[], "kills");
+
+    const test_cases = spinSqlQuery!(() { return db.getDetectedTestCaseIds; });
+
+    auto rval = new typeof(return);
+
+    foreach (tc_kill; test_cases.map!(a => TcKills(a, getKills(a)))
+            .filter!(a => a.kills.length != 0)) {
+        auto app = appender!(TestCaseSimilarityAnalyse.Similarity[])();
+        foreach (tc; test_cases.filter!(a => a != tc_kill.id)
+                .map!(a => TcKills(a, getKills(a)))
+                .filter!(a => a.kills.length != 0)) {
+            auto distance = setSimilarity(tc_kill.kills, tc.kills);
+            if (distance.similarity > 0)
+                app.put(TestCaseSimilarityAnalyse.Similarity(getTestCase(tc.id),
+                        distance.similarity, distance.intersection, distance.difference));
+        }
+        if (app.data.length != 0) {
+            () @trusted {
+                rval.similarities[getTestCase(tc_kill.id)] = heapify!((a,
+                        b) => a.similarity < b.similarity)(app.data).take(limit).array;
+            }();
+        }
+    }
+
+    return rval;
 }
 
 /// Statistics about dead test cases.
@@ -533,6 +656,92 @@ TestCaseOverlapStat reportTestCaseFullOverlap(ref Database db, const Mutation.Ki
     return st;
 }
 
+class TestGroupSimilarity {
+    static struct TestGroup {
+        string description;
+        string name;
+
+        /// What the user configured as regex. Useful when e.g. generating reports
+        /// for a user.
+        string userInput;
+
+        int opCmp(ref const TestGroup s) const {
+            import std.algorithm : cmp;
+
+            return cmp(name, s.name);
+        }
+    }
+
+    static struct Similarity {
+        /// The test group that the `key` is compared to.
+        TestGroup comparedTo;
+        /// How similare the `key` is to `comparedTo`.
+        double similarity;
+        /// Mutants that are similare between `testCase` and the parent.
+        MutationId[] intersection;
+        /// Unique mutants that are NOT verified by `testCase`.
+        MutationId[] difference;
+    }
+
+    Similarity[][TestGroup] similarities;
+}
+
+/** Analyze the similarity between the test groups.
+ *
+ * Assuming that a limit on how many test groups to report isn't interesting
+ * because they are few so it is never a problem.
+ *
+ */
+TestGroupSimilarity reportTestGroupsSimilarity(ref Database db,
+        const(Mutation.Kind)[] kinds, const(TestGroup)[] test_groups) @safe {
+    import std.algorithm : map, filter;
+    import std.array : appender, array;
+    import std.typecons : Tuple;
+    import dextool.plugin.mutate.backend.database.type : TestCaseInfo, TestCaseId;
+
+    alias TgKills = Tuple!(TestGroupSimilarity.TestGroup, "testGroup", MutationId[], "kills");
+
+    const test_cases = spinSqlQuery!(() { return db.getDetectedTestCaseIds; }).map!(
+            a => Tuple!(TestCaseId, "id", TestCase, "tc")(a, spinSqlQuery!(() {
+                return db.getTestCase(a);
+            }))).array;
+
+    MutationId[] gatherKilledMutants(const(TestGroup) tg) {
+        auto kills = appender!(MutationId[])();
+        foreach (tc; test_cases.filter!(a => a.tc.isTestCaseInTestGroup(tg.re))) {
+            kills.put(spinSqlQuery!(() {
+                    return db.getTestCaseMutantKills(tc.id, kinds);
+                }));
+        }
+        return kills.data;
+    }
+
+    TgKills[] test_group_kills;
+    foreach (const tg; test_groups) {
+        auto kills = gatherKilledMutants(tg);
+        if (kills.length != 0)
+            test_group_kills ~= TgKills(TestGroupSimilarity.TestGroup(tg.description,
+                    tg.name, tg.userInput), kills);
+    }
+
+    // calculate similarity between all test groups.
+    auto rval = new typeof(return);
+
+    foreach (tg_parent; test_group_kills) {
+        auto app = appender!(TestGroupSimilarity.Similarity[])();
+        foreach (tg_other; test_group_kills.filter!(a => a.testGroup != tg_parent.testGroup)) {
+            auto similarity = setSimilarity(tg_parent.kills, tg_other.kills);
+            if (similarity.similarity > 0)
+                app.put(TestGroupSimilarity.Similarity(tg_other.testGroup,
+                        similarity.similarity, similarity.intersection, similarity.difference));
+            if (app.data.length != 0)
+                rval.similarities[tg_parent.testGroup] = app.data;
+        }
+    }
+
+    return rval;
+}
+
 class TestGroupStat {
     import dextool.plugin.mutate.backend.database : MutationId, FileId, MutantInfo;
 
@@ -548,6 +757,20 @@ class TestGroupStat {
     MutantInfo[][FileId] alive;
     /// Mutants killed in a file.
     MutantInfo[][FileId] killed;
+}
+
+import std.regex : Regex;
+
+private bool isTestCaseInTestGroup(const TestCase tc, const Regex!char tg) {
+    import std.regex : matchFirst;
+
+    auto m = matchFirst(tc.name, tg);
+    // the regex must match the full test case thus checking that
+    // nothing is left before or after
+    if (!m.empty && m.pre.length == 0 && m.post.length == 0) {
+        return true;
+    }
+    return false;
 }
 
 TestGroupStat reportTestGroups(ref Database db, const(Mutation.Kind)[] kinds,
@@ -575,14 +798,8 @@ TestGroupStat reportTestGroups(ref Database db, const(Mutation.Kind)[] kinds,
 
     // map test cases to this test group
     foreach (tc; db.getDetectedTestCases) {
-        import std.regex : matchFirst;
-
-        auto m = matchFirst(tc.name, test_g.re);
-        // the regex must match the full test case thus checking that
-        // nothing is left before or after
-        if (!m.empty && m.pre.length == 0 && m.post.length == 0) {
+        if (tc.isTestCaseInTestGroup(test_g.re))
             r.testCases ~= tc;
-        }
     }
 
     // collect mutation statistics for each test case group
@@ -772,6 +989,58 @@ DiffReport reportDiff(ref Database db, const(Mutation.Kind)[] kinds,
     } else {
         rval.score = cast(double) killed / cast(double) total;
     }
+
+    return rval;
+}
+
+struct MinimalTestSet {
+    import dextool.plugin.mutate.backend.database.type : TestCaseInfo;
+
+    long total;
+
+    /// Minimal set that achieve the mutation test score.
+    TestCase[] minimalSet;
+    /// Test cases that do not contribute to the mutation test score.
+    TestCase[] redundant;
+    /// Map between test case name and sum of all the test time of the mutants it killed.
+    TestCaseInfo[string] testCaseTime;
+}
+
+MinimalTestSet reportMinimalSet(ref Database db, const Mutation.Kind[] kinds) {
+    import std.algorithm : map, filter, sort;
+    import std.array : array;
+    import std.typecons : Tuple, tuple;
+    import dextool.plugin.mutate.backend.database : TestCaseId, TestCaseInfo;
+    import dextool.set;
+
+    alias TcIdInfo = Tuple!(TestCase, "tc", TestCaseId, "id", TestCaseInfo, "info");
+
+    MinimalTestSet rval;
+
+    Set!MutationId killedMutants;
+
+    // start by picking test cases that have the fewest kills.
+    foreach (const val; db.getDetectedTestCases
+            .map!(a => tuple(a, db.getTestCaseId(a)))
+            .filter!(a => !a[1].isNull)
+            .map!(a => TcIdInfo(a[0], a[1], db.getTestCaseInfo(a[0], kinds)))
+            .filter!(a => a.info.killedMutants != 0)
+            .array
+            .sort!((a, b) => a.info.killedMutants < b.info.killedMutants)) {
+        rval.testCaseTime[val.tc.name] = val.info;
+
+        const killed = killedMutants.length;
+        foreach (const id; db.getTestCaseMutantKills(val.id, kinds)) {
+            killedMutants.add(id);
+        }
+
+        if (killedMutants.length > killed)
+            rval.minimalSet ~= val.tc;
+        else
+            rval.redundant ~= val.tc;
+    }
+
+    rval.total = rval.minimalSet.length + rval.redundant.length;
 
     return rval;
 }
