@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2017, Niklas Pettersson. All rights reserved.
+Copyright: Copyright (c) 2019, Niklas Pettersson. All rights reserved.
 License: MPL-2
 Author: Niklas Pettersson (nikpe353@student.liu.se)
 
@@ -10,3 +10,4 @@ one at http://mozilla.org/MPL/2.0/.
 module mutantschemata;
 
 public import mutantschemata.api;
+public import mutantschemata.d_string;

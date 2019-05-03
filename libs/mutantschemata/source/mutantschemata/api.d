@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2017, Niklas Pettersson. All rights reserved.
+Copyright: Copyright (c) 2019, Niklas Pettersson. All rights reserved.
 License: MPL-2
 Author: Niklas Pettersson (nikpe353@student.liu.se)
 
@@ -24,87 +24,96 @@ Meant to function as an api for schemata using and providing schemata with db
 */
 module mutantschemata.api;
 
-// imports for easier testing
+import mutantschemata.d_string: CppStringTest;
+
+import microrm;
+import dextool.type: Path;
+import dextool.plugin.mutate.backend.database.schema: MutationPointTbl;
+
+import logger = std.experimental.logger;
+
+// TODO: clean up imports
 import std.conv : text, to;
 import std.range;
 import std.algorithm;
 import std.array;
 import std.stdio;
 
-import logger = std.experimental.logger;
-
-import microrm.exception;
-import microrm.queries;
-import microrm.schema;
-import dextool.type: Path;
-
-import dextool.plugin.mutate.backend.type: Mutation, SourceLoc, Offset;
-import dextool.plugin.mutate.backend.database.schema: MutationTbl, MutationPointTbl;
-
-struct SchemataMutant {
+/* External C++ structs */
+extern (C++) struct SourceLoc {
+    uint line;
+    uint column;
+}
+extern (C++) struct Offset {
+    uint offset_begin;
+    uint offset_end;
+}
+extern (C++) struct SchemataMutant {
     SourceLoc loc;
-    Offset offset; // necessary?
-    Mutation mut;
+    Offset offset;
     int inject;
-    // string code; //could be stored in SchemataFile (same for all mutants in one file)
 }
-struct SchemataFile {
-    Path fpath;
-    SchemataMutant[] mutants;
-    int[] inject;
+// External C++ interface
+extern (C++) interface SchemataApiCpp {
+    void apiInsert();
+    SchemataMutant apiSelectMutant();
+    SchemataMutant apiSelectMutantConditionally();
 }
+// External C++ functions
+extern (C++) void runSchemataCpp(SchemataApiCpp);
 
+// Entry point for Dextool mutate
 SchemataApi makeSchemata(Path db){
+    writeln("make schemata");
     SchemataApi sa = new SchemataApi(db);
     return sa;
 }
 
-// C++ interface
-extern (C++) interface SchemataApiCpp {
-    void apiInsert();
-    void apiSelect();
-}
-
-// Extern C++ function callable by D-files
-extern (C++) void runSchemataCpp(SchemataApiCpp);
-
-// D class callable by C++ code
+// D class, connection to C++ code in /cpp_source
 class SchemataApi: SchemataApiCpp {
+    // TODO: remove testStruct after Insert is further developed
     struct TestStruct {
         int x;
         int y;
     }
     private Microrm db;
 
-    this(string path){
+    this(string path) {
         db = Microrm(path);
         db.run(buildSchema!TestStruct);
         db.run(delete_!TestStruct);
     }
-    extern (C++) void apiInsert(){
+    extern (C++) void apiInsert() {
         import std.random;
         auto rnd = Random(unpredictableSeed);
         writeln("inserting!");
         db.run(insert!TestStruct.insert, TestStruct(uniform(0, 1024, rnd), uniform(0, 1024, rnd)));
     }
-    extern (C++) void apiSelect(){
-        apiSelect!(TestStruct);
-        apiSelect!(MutationPointTbl, "id == 100");
+    extern (C++) SchemataMutant apiSelectMutant() {
+        CppStringTest(); // it seems to work!
+        auto res = apiSelectInternal!(MutationPointTbl);
+        auto front = res.front;
+
+        return createSchemataMutant(front);
     }
-    auto apiSelect(T)(){
-        writeln("selecting!");
-        auto res = db.run(select!T).array;
-        foreach (r; res){
-            writeln(r);
-        }
-        return res;
+    extern (C++) SchemataMutant apiSelectMutantConditionally() {
+        auto res = apiSelectInternalCondition!(MutationPointTbl, "id == 100");
+        auto front = res.front;
+
+        return createSchemataMutant(front);
     }
-    void apiSelect(T, string condition)(){
-        writeln("selecting with condition!");
-        auto res = db.run(select!(T).where(condition)).array;
-        foreach (r; res){
-            writeln(r);
-        }
+    T[] apiSelectInternal(T)() {
+        auto query = db.run(select!T).array;
+
+        return query;
+    }
+    T[] apiSelectInternalCondition(T, string condition)() {
+        auto query = db.run(select!T.where(condition)).array;
+
+        return query;
+    }
+    SchemataMutant createSchemataMutant(MutationPointTbl mpt){
+        return SchemataMutant(SourceLoc(mpt.line, mpt.column), Offset(mpt.offset_begin, mpt.offset_end), -1);
     }
     void runSchemata(Path file){
         runSchemataCpp(this);
@@ -112,5 +121,4 @@ class SchemataApi: SchemataApiCpp {
     void apiClose(){
         db.close();
     }
-    // TODO: need to use mutant and not TestStruct
 }
