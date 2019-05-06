@@ -24,7 +24,7 @@ Meant to function as an api for schemata using and providing schemata with db
 */
 module mutantschemata.api;
 
-import mutantschemata.d_string: CppStringTest;
+import mutantschemata.d_string;
 
 import microrm;
 import dextool.type: Path;
@@ -57,7 +57,8 @@ extern (C++) struct SchemataMutant {
 extern (C++) interface SchemataApiCpp {
     void apiInsert();
     SchemataMutant apiSelectMutant();
-    SchemataMutant apiSelectMutantConditionally();
+    SchemataMutant apiSelectMutant(CppBytes);
+    SchemataMutant apiSelectMutant(CppStr);
 }
 // External C++ functions
 extern (C++) void runSchemataCpp(SchemataApiCpp);
@@ -90,27 +91,24 @@ class SchemataApi: SchemataApiCpp {
         db.run(insert!TestStruct.insert, TestStruct(uniform(0, 1024, rnd), uniform(0, 1024, rnd)));
     }
     extern (C++) SchemataMutant apiSelectMutant() {
-        CppStringTest(); // it seems to work!
-        auto res = apiSelectInternal!(MutationPointTbl);
+        return selectMpt();
+    }
+    extern (C++) SchemataMutant apiSelectMutant(CppBytes cb) {
+        return selectMpt(getDString!CppBytes(cb));
+    }
+    extern (C++) SchemataMutant apiSelectMutant(CppStr cs) {
+        return selectMpt(getDString!CppStr(cs));
+    }
+    SchemataMutant selectMpt(string condition = ""){
+        auto res = apiSelect!MutationPointTbl(condition);
         auto front = res.front;
 
         return createSchemataMutant(front);
     }
-    extern (C++) SchemataMutant apiSelectMutantConditionally() {
-        auto res = apiSelectInternalCondition!(MutationPointTbl, "id == 100");
-        auto front = res.front;
+    T[] apiSelect(T)(string condition = "") {
+        auto query = (condition != "") ? db.run(select!T.where(condition)) : db.run(select!T);
 
-        return createSchemataMutant(front);
-    }
-    T[] apiSelectInternal(T)() {
-        auto query = db.run(select!T).array;
-
-        return query;
-    }
-    T[] apiSelectInternalCondition(T, string condition)() {
-        auto query = db.run(select!T.where(condition)).array;
-
-        return query;
+        return query.array;
     }
     SchemataMutant createSchemataMutant(MutationPointTbl mpt){
         return SchemataMutant(SourceLoc(mpt.line, mpt.column), Offset(mpt.offset_begin, mpt.offset_end), -1);

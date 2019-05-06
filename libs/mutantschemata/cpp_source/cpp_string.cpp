@@ -25,19 +25,19 @@ int CppStr::length() {
 void CppStr::destroy() {
     delete cppStr;
 }
-CppBytes getStr() {
+CppBytes getStr(const char* text, int length) {
     CppBytes r;
-    r.ptr = new uint8_t[16];
-    r.length = 16;
 
-    const char* dummy = "0123456789 smurf";
-    memcpy(r.ptr, dummy, 16);
+    r.ptr = new uint8_t[length];
+    r.length = length;
+
+    memcpy(r.ptr, text, length);
 
     return r;
 }
-CppStr getStr2() {
+CppStr getStr2(const char* text) {
     CppStr r;
-    r.cppStr = new std::string("my stuff");
+    r.cppStr = new std::string(text);
 
     return r;
 }

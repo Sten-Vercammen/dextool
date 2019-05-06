@@ -10,6 +10,9 @@ one at http://mozilla.org/MPL/2.0/.
 Headerfile for cpp_string.cpp
 String implementation for sending strings back and forth between D and C++
 */
+#ifndef CPP_STRING
+#define CPP_STRING
+
 #include <stdint.h>
 #include <string.h>
 #include <string>
@@ -29,7 +32,9 @@ struct CppStr{
     int length();
     void destroy();
 };
-CppBytes getStr();
-CppStr getStr2();
+CppBytes getStr(const char*, int);
+CppStr getStr2(const char*);
 
 } // CppString
+
+#endif

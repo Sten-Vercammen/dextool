@@ -43,28 +43,11 @@ struct CppPayload(T) {
         data.destroy;
     }
 }
+auto getDString(T)(T t){
+    auto cp = RefCounted!(CppPayload!T)(t);
 
-// TODO: should be getDString or similar.
-void CppStringTest(){
-    {
-        auto cb = RefCounted!(CppPayload!CppBytes)(getStr);
-        writeln("cb is: ", cb.refCountedPayload.ptr[0 .. cb.length]);
+    // if this passes it is OK to duplicate and cast to a D string
+    validate(cast(string) cp.refCountedPayload.ptr[0 .. cp.length]);
 
-        // if this passes it is OK to duplicate and cast to a D string
-        validate(cast(string) cb.refCountedPayload.ptr[0 .. cb.length]);
-        auto s = cast(string) cb.refCountedPayload.ptr[0 .. cb.length].idup;
-
-        writeln("s is :", s);
-    }
-
-    {
-        auto cs = RefCounted!(CppPayload!CppStr)(getStr2);
-        writeln("cs is: ", cs.refCountedPayload.ptr[0 .. cs.length]);
-
-        // if this passes it is OK to duplicate and cast to a D string
-        validate(cast(string) cs.refCountedPayload.ptr[0 .. cs.length]);
-        auto s = cast(string) cs.refCountedPayload.ptr[0 .. cs.length].idup;
-
-        writeln("s is :", s);
-    }
+    return cast(string)(cp.refCountedPayload.ptr[0 .. cp.length].idup);
 }

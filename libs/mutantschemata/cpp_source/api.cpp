@@ -15,12 +15,27 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 void runSchemataCpp (SchemataApiCpp *sac){
     std::cout << "run schemata cpp" << std::endl;
 
-    SchemataMutant sm = sac->apiSelectMutant();
+    {
+        // using CppBytes
+        CppString::CppBytes cb_condition = CppString::getStr("id == 101", 9);
+        SchemataMutant sm = sac->apiSelectMutant(cb_condition);
 
-    // testprints
-    std::cout << "SchemataMutant: " << std::endl;
-    std::cout << "SourceLoc line: " << sm.loc.line << ", col: " << sm.loc.column << std::endl;
-    std::cout << "Offset begin: " << sm.offset.begin << ", end: " << sm.offset.end << std::endl;
+        // testprints
+        std::cout << "SchemataMutant: " << std::endl;
+        std::cout << "SourceLoc line: " << sm.loc.line << ", col: " << sm.loc.column << std::endl;
+        std::cout << "Offset begin: " << sm.offset.begin << ", end: " << sm.offset.end << std::endl;
+    }
+
+    {
+        // using CppStr
+        CppString::CppStr cs_condition = CppString::getStr2("id == 101");
+        SchemataMutant sm = sac->apiSelectMutant(cs_condition);
+
+        // testprints
+        std::cout << "SchemataMutant: " << std::endl;
+        std::cout << "SourceLoc line: " << sm.loc.line << ", col: " << sm.loc.column << std::endl;
+        std::cout << "Offset begin: " << sm.offset.begin << ", end: " << sm.offset.end << std::endl;
+    }
 
     //sac->apiInsert(sm);
     //sac->apiInsert(sm);

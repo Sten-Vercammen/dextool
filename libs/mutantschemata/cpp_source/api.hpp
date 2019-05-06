@@ -11,7 +11,12 @@ Headerfile for api.cpp
 C++ part of the SchemataApi. Meant to be used by the Mutant Schemata C++ library
 in order to call D code and insert/select mutants from db obtained from Dextool mutate.
 */
+#ifndef API_CPP
+#define API_CPP
+
+
 #include "type.cpp"
+#include "cpp_string.hpp"
 #include <iostream>
 #include <string>
 
@@ -21,7 +26,10 @@ public:
     virtual void apiInsert();
     //virtual SchemataMutant apiSelect(Arguments);
     virtual SchemataMutant apiSelectMutant();
-    virtual SchemataMutant apiSelectMutantConditionally();
+    virtual SchemataMutant apiSelectMutant(CppString::CppBytes);
+    virtual SchemataMutant apiSelectMutant(CppString::CppStr);
 };
 
 void runSchemataCpp (SchemataApiCpp *sac);
+
+#endif
