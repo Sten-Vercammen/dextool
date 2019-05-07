@@ -9,16 +9,34 @@ one at http://mozilla.org/MPL/2.0/.
 
 C++ types for easier communication between C++ and D code.
 */
-#include "type.hpp"
-#include <iostream>
+#ifndef TYPE_CPP
+#define TYPE_CPP
+
+#include "cpp_string.hpp"
 
 namespace CppType {
 
-void SchemataMutant::print(){
-    std::cout << "SchemataMutant: " << std::endl;
-    std::cout << "SourceLoc line: " << loc.line << ", col: " << loc.column << std::endl;
-    std::cout << "Offset begin: " << offset.begin << ", end: " << offset.end << std::endl;
-    std::cout << "Inject: " << inject << std::endl;
-}
+struct SourceLoc {
+    unsigned line;
+    unsigned column;
+};
+struct Offset {
+    unsigned begin;
+    unsigned end;
+};
+struct SchemataMutant {
+    SourceLoc loc;
+    Offset offset;
+    int inject;
+
+    void print();
+};
+struct SchemataFile {
+    CppString::CppStr fpath;
+    SchemataMutant mutants[];
+    CppString::CppStr code;
+};
 
 }
+
+#endif

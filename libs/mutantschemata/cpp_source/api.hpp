@@ -14,20 +14,27 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 #ifndef API_CPP
 #define API_CPP
 
-
-#include "type.cpp"
+#include "type.hpp"
 #include "cpp_string.hpp"
-#include <iostream>
-#include <string>
 
 class SchemataApiCpp {
 public:
-    //virtual void apiInsert(SchemataMutant);
-    virtual void apiInsert();
-    //virtual SchemataMutant apiSelect(Arguments);
-    virtual SchemataMutant apiSelectMutant();
-    virtual SchemataMutant apiSelectMutant(CppString::CppBytes);
-    virtual SchemataMutant apiSelectMutant(CppString::CppStr);
+    virtual void apiInsertSchemataMutant(CppType::SchemataMutant);
+    virtual void apiInsertSchemataFile(CppType::SchemataFile);
+    virtual CppType::SchemataMutant apiSelectSchemataMutant();
+    virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppBytes);
+    virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppStr);
+    virtual CppType::SchemataMutant apiSelectMutant();
+    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppBytes);
+    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppStr);
+    virtual void apiBuildMutant();
+    virtual void apiBuildFile();
+    virtual void apiDeleteMutant();
+    virtual void apiDeleteMutant(CppString::CppBytes);
+    virtual void apiDeleteMutant(CppString::CppStr);
+    virtual void apiDeleteFile();
+    virtual void apiDeleteFile(CppString::CppBytes);
+    virtual void apiDeleteFile(CppString::CppStr);
 };
 
 void runSchemataCpp (SchemataApiCpp *sac);

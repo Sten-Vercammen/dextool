@@ -11,3 +11,4 @@ module mutantschemata;
 
 public import mutantschemata.api;
 public import mutantschemata.d_string;
+public import mutantschemata.externals;

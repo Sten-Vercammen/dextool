@@ -25,7 +25,7 @@ int CppStr::length() {
 void CppStr::destroy() {
     delete cppStr;
 }
-CppBytes getStr(const char* text, int length) {
+CppBytes getBytes(const char* text, int length) {
     CppBytes r;
 
     r.ptr = new uint8_t[length];
@@ -35,7 +35,7 @@ CppBytes getStr(const char* text, int length) {
 
     return r;
 }
-CppStr getStr2(const char* text) {
+CppStr getStr(const char* text) {
     CppStr r;
     r.cppStr = new std::string(text);
 

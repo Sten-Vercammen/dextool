@@ -32,8 +32,8 @@ struct CppStr{
     int length();
     void destroy();
 };
-CppBytes getStr(const char*, int);
-CppStr getStr2(const char*);
+CppBytes getBytes(const char*, int);
+CppStr getStr(const char*);
 
 } // CppString
 
