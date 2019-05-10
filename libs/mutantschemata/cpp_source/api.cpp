@@ -13,15 +13,32 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 #include "api.hpp"
 
 void runSchemataCpp (SchemataApiCpp *sac){
-    std::cout << "run schemata cpp" << std::endl;
+    // temporary tests
+    {   // using CppBytes
+        sac->apiBuildMutant();
+        CppType::SchemataMutant before_edit = sac->apiSelectMutant(CppString::getBytes("id == 101", 9));
 
-    SchemataMutant sm = sac->apiSelectMutant();
+        // change inject and insert
+        before_edit.inject = 5;
+        sac->apiInsertSchemataMutant(before_edit);
 
-    // testprints
-    std::cout << "SchemataMutant: " << std::endl;
-    std::cout << "SourceLoc line: " << sm.loc.line << ", col: " << sm.loc.column << std::endl;
-    std::cout << "Offset begin: " << sm.offset.begin << ", end: " << sm.offset.end << std::endl;
+        // select updated mutant
+        CppType::SchemataMutant after_edit = sac->apiSelectSchemataMutant(CppString::getBytes("\"loc.line\" = 14", 15));
 
-    //sac->apiInsert(sm);
-    //sac->apiInsert(sm);
+        after_edit.print();
+    }
+    {   // using CppStr
+        sac->apiBuildMutant();
+        CppType::SchemataMutant before_edit = sac->apiSelectMutant(CppString::getStr("id == 101"));
+
+        // change inject and insert
+        before_edit.inject = 97;
+        before_edit.loc.line = 900;
+        sac->apiInsertSchemataMutant(before_edit);
+
+        // select updated mutant
+        CppType::SchemataMutant after_edit = sac->apiSelectSchemataMutant(CppString::getStr("\"loc.line\" = 900"));
+
+        after_edit.print();
+    }
 }

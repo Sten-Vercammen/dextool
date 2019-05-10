@@ -11,29 +11,8 @@ String implementation for sending strings back and forth between D and C++
 */
 module mutantschemata.d_string;
 
-import std.stdio;
 import std.typecons: RefCounted;
-import core.memory: pureFree;
 import std.utf: validate;
-
-// the reciever is responsible for deleting the ptr with free
-extern (C++, CppString) {
-    extern (C++) struct CppBytes {
-        void* ptr;
-        int length;
-
-        void destroy();
-    }
-    extern (C++) struct CppStr {
-        void* cppStr;
-
-        const(void)* ptr();
-        int length();
-        void destroy();
-    }
-    extern (C++) CppBytes getStr();
-    extern (C++) CppStr getStr2();
-}
 
 struct CppPayload(T) {
     T data;
@@ -43,28 +22,10 @@ struct CppPayload(T) {
         data.destroy;
     }
 }
-
-// TODO: should be getDString or similar.
-void CppStringTest(){
-    {
-        auto cb = RefCounted!(CppPayload!CppBytes)(getStr);
-        writeln("cb is: ", cb.refCountedPayload.ptr[0 .. cb.length]);
-
-        // if this passes it is OK to duplicate and cast to a D string
-        validate(cast(string) cb.refCountedPayload.ptr[0 .. cb.length]);
-        auto s = cast(string) cb.refCountedPayload.ptr[0 .. cb.length].idup;
-
-        writeln("s is :", s);
-    }
-
-    {
-        auto cs = RefCounted!(CppPayload!CppStr)(getStr2);
-        writeln("cs is: ", cs.refCountedPayload.ptr[0 .. cs.length]);
-
-        // if this passes it is OK to duplicate and cast to a D string
-        validate(cast(string) cs.refCountedPayload.ptr[0 .. cs.length]);
-        auto s = cast(string) cs.refCountedPayload.ptr[0 .. cs.length].idup;
-
-        writeln("s is :", s);
-    }
+auto getDString(T)(T t){
+    auto cp = RefCounted!(CppPayload!T)(t);
+    // if this passes it is OK to duplicate and cast to a D string
+    validate(cast(string) cp.refCountedPayload.ptr[0 .. cp.length]);
+    auto s = cast(string) cp.refCountedPayload.ptr[0 .. cp.length].idup;
+    return s;
 }

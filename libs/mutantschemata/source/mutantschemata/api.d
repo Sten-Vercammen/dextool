@@ -24,9 +24,12 @@ Meant to function as an api for schemata using and providing schemata with db
 */
 module mutantschemata.api;
 
-import mutantschemata.d_string: CppStringTest;
+import mutantschemata.d_string;
+import mutantschemata.externals;
 
-import microrm;
+import microrm.exception;
+import microrm.queries;
+import microrm.schema;
 import dextool.type: Path;
 import dextool.plugin.mutate.backend.database.schema: MutationPointTbl;
 
@@ -39,86 +42,109 @@ import std.algorithm;
 import std.array;
 import std.stdio;
 
-/* External C++ structs */
-extern (C++) struct SourceLoc {
-    uint line;
-    uint column;
-}
-extern (C++) struct Offset {
-    uint offset_begin;
-    uint offset_end;
-}
-extern (C++) struct SchemataMutant {
-    SourceLoc loc;
-    Offset offset;
-    int inject;
-}
-// External C++ interface
-extern (C++) interface SchemataApiCpp {
-    void apiInsert();
-    SchemataMutant apiSelectMutant();
-    SchemataMutant apiSelectMutantConditionally();
-}
-// External C++ functions
-extern (C++) void runSchemataCpp(SchemataApiCpp);
-
 // Entry point for Dextool mutate
-SchemataApi makeSchemata(Path db){
-    writeln("make schemata");
+SchemataApi makeSchemataApi(Path db) {
     SchemataApi sa = new SchemataApi(db);
     return sa;
+}
+struct SchemataFileString {
+    string fpath;
+    SchemataMutant[] mutants;
+    string code;
+}
+SchemataFileString convert(SchemataFile sf) {
+    return SchemataFileString(getDString!CppStr(sf.fpath),
+                                sf.mutants,
+                                getDString!CppStr(sf.code));
 }
 
 // D class, connection to C++ code in /cpp_source
 class SchemataApi: SchemataApiCpp {
-    // TODO: remove testStruct after Insert is further developed
-    struct TestStruct {
-        int x;
-        int y;
-    }
     private Microrm db;
 
     this(string path) {
         db = Microrm(path);
-        db.run(buildSchema!TestStruct);
-        db.run(delete_!TestStruct);
     }
-    extern (C++) void apiInsert() {
-        import std.random;
-        auto rnd = Random(unpredictableSeed);
-        writeln("inserting!");
-        db.run(insert!TestStruct.insert, TestStruct(uniform(0, 1024, rnd), uniform(0, 1024, rnd)));
+    // Override of functions in external interface
+    extern (C++) void apiInsertSchemataMutant(SchemataMutant sm) {
+        apiInsert!SchemataMutant(sm);
+    }
+    extern (C++) void apiInsertSchemataFile(SchemataFile sf){
+        apiInsert!SchemataFileString(convert(sf));
+    }
+    extern (C++) SchemataMutant apiSelectSchemataMutant() {
+        return sanitize(apiSelect!SchemataMutant());
+    }
+    extern (C++) SchemataMutant apiSelectSchemataMutant(CppBytes cb) {
+        return sanitize(apiSelect!SchemataMutant(getDString!CppBytes(cb)));
+    }
+    extern (C++) SchemataMutant apiSelectSchemataMutant(CppStr cs){
+        return sanitize(apiSelect!SchemataMutant(getDString!CppStr(cs)));
     }
     extern (C++) SchemataMutant apiSelectMutant() {
-        CppStringTest(); // it seems to work!
-        auto res = apiSelectInternal!(MutationPointTbl);
-        auto front = res.front;
-
-        return createSchemataMutant(front);
+        return sanitize(apiSelect!MutationPointTbl());
     }
-    extern (C++) SchemataMutant apiSelectMutantConditionally() {
-        auto res = apiSelectInternalCondition!(MutationPointTbl, "id == 100");
-        auto front = res.front;
-
-        return createSchemataMutant(front);
+    extern (C++) SchemataMutant apiSelectMutant(CppBytes cb) {
+        return sanitize(apiSelect!MutationPointTbl(getDString!CppBytes(cb)));
     }
-    T[] apiSelectInternal(T)() {
-        auto query = db.run(select!T).array;
-
-        return query;
+    extern (C++) SchemataMutant apiSelectMutant(CppStr cs) {
+        return sanitize(apiSelect!MutationPointTbl(getDString!CppStr(cs)));
     }
-    T[] apiSelectInternalCondition(T, string condition)() {
-        auto query = db.run(select!T.where(condition)).array;
-
-        return query;
+    extern (C++) void apiBuildMutant() {
+        apiBuildSchema!SchemataMutant();
     }
-    SchemataMutant createSchemataMutant(MutationPointTbl mpt){
+    extern (C++) void apiBuildFile() {
+        apiBuildSchema!SchemataFileString();
+    }
+    extern (C++) void apiDeleteMutant() {
+        apiDelete!SchemataMutant();
+    }
+    extern (C++) void apiDeleteMutant(CppBytes cb) {
+        apiDelete!SchemataMutant(getDString!CppBytes(cb));
+    }
+    extern (C++) void apiDeleteMutant(CppStr cs) {
+        apiDelete!SchemataMutant(getDString!CppStr(cs));
+    }
+    extern (C++) void apiDeleteFile() {
+        apiDelete!SchemataFileString();
+    }
+    extern (C++) void apiDeleteFile(CppBytes cb) {
+        apiDelete!SchemataFileString(getDString!CppBytes(cb));
+    }
+    extern (C++) void apiDeleteFile(CppStr cs) {
+        apiDelete!SchemataFileString(getDString!CppStr(cs));
+    }
+    void apiInsert(T)(T t){
+        db.run(insert!T.insert, t);
+    }
+    T[] apiSelect(T)(string condition = "") {
+        auto query = (condition != "") ? db.run(select!T.where(condition)) : db.run(select!T);
+
+        return query.array;
+    }
+    void apiBuildSchema(T)() {
+        db.run(buildSchema!T);
+    }
+    void apiDelete(T)(string condition = ""){
+        (condition != "") ? db.run(delete_!T.where(condition)) : db.run(delete_!T);
+    }
+    SchemataMutant sanitize(T)(T[] t) {
+        return t.empty ? createSchemataMutant() : createSchemataMutant(t.front);
+    }
+    SchemataMutant createSchemataMutant() {
+        return SchemataMutant(SourceLoc(0,0), Offset(0,0), -1);
+    }
+    SchemataMutant createSchemataMutant(SchemataMutant sm) {
+        return sm;
+    }
+    SchemataMutant createSchemataMutant(MutationPointTbl mpt) {
         return SchemataMutant(SourceLoc(mpt.line, mpt.column), Offset(mpt.offset_begin, mpt.offset_end), -1);
     }
-    void runSchemata(Path file){
+    // TODO: extend so that dextool mutate can send what type of mutants etc
+    void runSchemata(Path file) {
         runSchemataCpp(this);
     }
-    void apiClose(){
+    void apiClose() {
         db.close();
     }
 }

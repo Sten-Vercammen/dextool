@@ -20,9 +20,3 @@ set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source -I${CMAKE_SOURCE_DIR}/source -I${C
 set(deps "dextool_d2sqlite3;dextool_sumtype;dextool_microrm;dextool_mutantschemata_cpp_source")
 
 compile_d_static_lib(dextool_mutantschemata "${SRC_FILES}" "${flags}" "" "${deps}")
-
-#list(APPEND SRC_FILES
-#    ${CMAKE_CURRENT_LIST_DIR}/ut_main.d
-#)
-
-#compile_d_unittest(microrm "${SRC_FILES}" "${flags}" "" "${deps}")
