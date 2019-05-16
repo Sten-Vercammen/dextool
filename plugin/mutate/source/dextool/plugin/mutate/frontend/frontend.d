@@ -278,6 +278,8 @@ ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
     // call the schemataApi
     import std.stdio: writeln;
     import mutantschemata;
+    import dextool.type: Path;
+
     Path db = Path("dextool_mutate.sqlite3");
     Path[] files = dacc.db.getFiles();
     SchemataApi sa = makeSchemataApi(db);
@@ -286,8 +288,6 @@ ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
         writeln(f);
         sa.runSchemata(f);
     }
-
-    writeln("closing!");
     sa.apiClose();
 
     return est;

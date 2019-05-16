@@ -27,20 +27,14 @@ module mutantschemata.api;
 import mutantschemata.d_string;
 import mutantschemata.externals;
 
-import microrm.exception;
-import microrm.queries;
-import microrm.schema;
+import microrm : Microrm, buildSchema, delete_, insert, select;
 import dextool.type: Path;
-import dextool.plugin.mutate.backend.database.schema: MutationPointTbl;
+import dextool.plugin.mutate.backend.database: MutationPointTbl;
+
+import std.range: front;
+import std.array: array, empty;
 
 import logger = std.experimental.logger;
-
-// TODO: clean up imports
-import std.conv : text, to;
-import std.range;
-import std.algorithm;
-import std.array;
-import std.stdio;
 
 // Entry point for Dextool mutate
 SchemataApi makeSchemataApi(Path db) {

@@ -20,6 +20,9 @@ import std.format : format;
 import dextool.type : AbsolutePath, Path;
 import dextool.plugin.mutate.backend.type;
 
+// TODO: this public import should not exist.
+public import dextool.plugin.mutate.backend.database.schema: MutationPointTbl;
+
 import dextool.plugin.mutate.backend.database.schema;
 public import dextool.plugin.mutate.backend.database.type;
 public import dextool.plugin.mutate.backend.database.standalone : spinSqlQuery;
