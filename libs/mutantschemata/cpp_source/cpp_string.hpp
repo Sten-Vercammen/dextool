@@ -16,6 +16,9 @@ String implementation for sending strings back and forth between D and C++
 #include <stdint.h>
 #include <string.h>
 #include <string>
+#include <iostream>
+
+const int ONE_CHARACTER = 1;
 
 namespace CppString {
 
@@ -31,9 +34,11 @@ struct CppStr{
     const void* ptr();
     int length();
     void destroy();
+    void put(char);
 };
 CppBytes getBytes(const char*, int);
 CppStr getStr(const char*);
+CppStr createCppStr();
 
 } // CppString
 

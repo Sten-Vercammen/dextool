@@ -25,6 +25,9 @@ int CppStr::length() {
 void CppStr::destroy() {
     delete cppStr;
 }
+void CppStr::put(char c){
+    cppStr->append(ONE_CHARACTER, c);
+}
 CppBytes getBytes(const char* text, int length) {
     CppBytes r;
 
@@ -40,6 +43,9 @@ CppStr getStr(const char* text) {
     r.cppStr = new std::string(text);
 
     return r;
+}
+CppStr createCppStr(){
+    return getStr("");
 }
 
 } // CppString
