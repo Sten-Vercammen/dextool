@@ -11,8 +11,11 @@ String implementation for sending strings back and forth between D and C++
 */
 module mutantschemata.d_string;
 
+import mutantschemata.externals: CppStr, createCppStr;
+
 import std.typecons: RefCounted;
 import std.utf: validate;
+import std.algorithm: each;
 
 struct CppPayload(T) {
     T data;
@@ -22,10 +25,20 @@ struct CppPayload(T) {
         data.destroy;
     }
 }
-auto getDString(T)(T t){
+auto cppToD(T)(T t){
     auto cp = RefCounted!(CppPayload!T)(t);
     // if this passes it is OK to duplicate and cast to a D string
     validate(cast(string) cp.refCountedPayload.ptr[0 .. cp.length]);
     auto s = cast(string) cp.refCountedPayload.ptr[0 .. cp.length].idup;
+
     return s;
+}
+auto dToCpp(string d_string){
+    auto cs = createCppStr();
+
+    foreach (character; d_string) {
+        cs.put(character);
+    }
+
+    return cs;
 }

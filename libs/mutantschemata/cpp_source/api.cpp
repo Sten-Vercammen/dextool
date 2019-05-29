@@ -12,7 +12,14 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 */
 #include "api.hpp"
 
-void runSchemataCpp (SchemataApiCpp *sac){
+#include <iostream>
+
+void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
+    CppString::CppStr include = CppString::getStr("fibonacci_example.hpp"); // the file included with "#include "fibonacci_example.hpp""
+    std::cout << "trying findInclude from Cpp-side" << std::endl;
+    CppString::CppStr res = sac->apiFindInclude(cs, include);
+    std::cout << *res.cppStr << std::endl;
+
     // temporary tests
     {   // using CppBytes
         sac->apiBuildMutant();

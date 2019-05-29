@@ -25,9 +25,11 @@ extern (C++, CppString) {
         const(void)* ptr();
         int length();
         void destroy();
+        void put(char);
     }
     extern (C++) CppBytes getBytes();
     extern (C++) CppStr getStr();
+    extern (C++) CppStr createCppStr();
 }
 
 // External C++ types
@@ -72,7 +74,8 @@ extern (C++) interface SchemataApiCpp {
     void apiDeleteFile();
     void apiDeleteFile(CppBytes);
     void apiDeleteFile(CppBytes);
+    CppStr apiFindInclude(CppStr, CppStr);
 }
 
 // External C++ functions
-extern (C++) void runSchemataCpp(SchemataApiCpp);
+extern (C++) void runSchemataCpp(SchemataApiCpp, CppStr);
