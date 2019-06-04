@@ -33,8 +33,8 @@ struct SchemataMutant {
 };
 struct SchemataFile {
     CppString::CppStr fpath;
-    SchemataMutant mutants[];
     CppString::CppStr code;
+    SchemataMutant mutants[];
 };
 
 }
