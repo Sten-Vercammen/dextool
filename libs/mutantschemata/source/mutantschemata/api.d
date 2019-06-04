@@ -24,27 +24,23 @@ Meant to function as an api for schemata using and providing schemata with db
 */
 module mutantschemata.api;
 
-import mutantschemata.d_string;
+import mutantschemata.d_string: cppToD, dToCpp;
 import mutantschemata.externals;
+import mutantschemata.utility: findInclude;
 
-import microrm.exception;
-import microrm.queries;
-import microrm.schema;
+import microrm : Microrm, buildSchema, delete_, insert, select;
 import dextool.type: Path;
-import dextool.plugin.mutate.backend.database.schema: MutationPointTbl;
+import dextool.plugin.mutate.backend.database: MutationPointTbl;
+import dextool.compilation_db: CompileCommandDB;
+
+import std.range: front;
+import std.array: array, empty;
 
 import logger = std.experimental.logger;
 
-// TODO: clean up imports
-import std.conv : text, to;
-import std.range;
-import std.algorithm;
-import std.array;
-import std.stdio;
-
 // Entry point for Dextool mutate
-SchemataApi makeSchemataApi(Path db) {
-    SchemataApi sa = new SchemataApi(db);
+SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb) {
+    SchemataApi sa = new SchemataApi(db, ccdb);
     return sa;
 }
 struct SchemataFileString {
@@ -53,16 +49,18 @@ struct SchemataFileString {
     string code;
 }
 SchemataFileString convert(SchemataFile sf) {
-    return SchemataFileString(getDString!CppStr(sf.fpath),
+    return SchemataFileString(cppToD!CppStr(sf.fpath),
                                 sf.mutants,
-                                getDString!CppStr(sf.code));
+                                cppToD!CppStr(sf.code));
 }
 
 // D class, connection to C++ code in /cpp_source
 class SchemataApi: SchemataApiCpp {
     private Microrm db;
+    private CompileCommandDB ccdb;
 
-    this(string path) {
+    this(Path path, CompileCommandDB c) {
+        ccdb = c;
         db = Microrm(path);
     }
     // Override of functions in external interface
@@ -76,19 +74,19 @@ class SchemataApi: SchemataApiCpp {
         return sanitize(apiSelect!SchemataMutant());
     }
     extern (C++) SchemataMutant apiSelectSchemataMutant(CppBytes cb) {
-        return sanitize(apiSelect!SchemataMutant(getDString!CppBytes(cb)));
+        return sanitize(apiSelect!SchemataMutant(cppToD!CppBytes(cb)));
     }
     extern (C++) SchemataMutant apiSelectSchemataMutant(CppStr cs){
-        return sanitize(apiSelect!SchemataMutant(getDString!CppStr(cs)));
+        return sanitize(apiSelect!SchemataMutant(cppToD!CppStr(cs)));
     }
     extern (C++) SchemataMutant apiSelectMutant() {
         return sanitize(apiSelect!MutationPointTbl());
     }
     extern (C++) SchemataMutant apiSelectMutant(CppBytes cb) {
-        return sanitize(apiSelect!MutationPointTbl(getDString!CppBytes(cb)));
+        return sanitize(apiSelect!MutationPointTbl(cppToD!CppBytes(cb)));
     }
     extern (C++) SchemataMutant apiSelectMutant(CppStr cs) {
-        return sanitize(apiSelect!MutationPointTbl(getDString!CppStr(cs)));
+        return sanitize(apiSelect!MutationPointTbl(cppToD!CppStr(cs)));
     }
     extern (C++) void apiBuildMutant() {
         apiBuildSchema!SchemataMutant();
@@ -100,32 +98,34 @@ class SchemataApi: SchemataApiCpp {
         apiDelete!SchemataMutant();
     }
     extern (C++) void apiDeleteMutant(CppBytes cb) {
-        apiDelete!SchemataMutant(getDString!CppBytes(cb));
+        apiDelete!SchemataMutant(cppToD!CppBytes(cb));
     }
     extern (C++) void apiDeleteMutant(CppStr cs) {
-        apiDelete!SchemataMutant(getDString!CppStr(cs));
+        apiDelete!SchemataMutant(cppToD!CppStr(cs));
     }
     extern (C++) void apiDeleteFile() {
         apiDelete!SchemataFileString();
     }
     extern (C++) void apiDeleteFile(CppBytes cb) {
-        apiDelete!SchemataFileString(getDString!CppBytes(cb));
+        apiDelete!SchemataFileString(cppToD!CppBytes(cb));
     }
     extern (C++) void apiDeleteFile(CppStr cs) {
-        apiDelete!SchemataFileString(getDString!CppStr(cs));
+        apiDelete!SchemataFileString(cppToD!CppStr(cs));
+    }
+    extern (C++) CppStr apiFindInclude(CppStr cs_file, CppStr cs_include) {
+        return dToCpp(findInclude(ccdb, Path(cppToD!CppStr(cs_file)), Path(cppToD!CppStr(cs_include))));
     }
     void apiInsert(T)(T t){
         db.run(insert!T.insert, t);
     }
     T[] apiSelect(T)(string condition = "") {
         auto query = (condition != "") ? db.run(select!T.where(condition)) : db.run(select!T);
-
         return query.array;
     }
     void apiBuildSchema(T)() {
         db.run(buildSchema!T);
     }
-    void apiDelete(T)(string condition = ""){
+    void apiDelete(T)(string condition = "") {
         (condition != "") ? db.run(delete_!T.where(condition)) : db.run(delete_!T);
     }
     SchemataMutant sanitize(T)(T[] t) {
@@ -140,11 +140,12 @@ class SchemataApi: SchemataApiCpp {
     SchemataMutant createSchemataMutant(MutationPointTbl mpt) {
         return SchemataMutant(SourceLoc(mpt.line, mpt.column), Offset(mpt.offset_begin, mpt.offset_end), -1);
     }
-    // TODO: extend so that dextool mutate can send what type of mutants etc
-    void runSchemata(Path file) {
-        runSchemataCpp(this);
-    }
     void apiClose() {
         db.close();
+    }
+
+    // TODO: extend so that dextool mutate can send what type of mutants etc
+    void runSchemata(Path file) {
+        runSchemataCpp(this, dToCpp(file));
     }
 }

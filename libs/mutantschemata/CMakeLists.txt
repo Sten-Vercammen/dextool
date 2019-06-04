@@ -16,7 +16,19 @@ target_link_libraries(dextool_mutantschemata_cpp_source)
 
 ### The D-library
 file(GLOB_RECURSE SRC_FILES ${CMAKE_CURRENT_LIST_DIR}/source/mutantschemata/*.d)
-set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source -I${CMAKE_SOURCE_DIR}/source -I${CMAKE_SOURCE_DIR}/clang -I${CMAKE_SOURCE_DIR}/libclang -I${CMAKE_SOURCE_DIR}/plugin/source -I${CMAKE_SOURCE_DIR}/vendor/d2sqlite3/source -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src -I${CMAKE_SOURCE_DIR}/libs/microrm/source -I${CMAKE_SOURCE_DIR}/plugin/mutate/source")
+set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
+    -I${CMAKE_SOURCE_DIR}/source
+    -I${CMAKE_SOURCE_DIR}/clang
+    -I${CMAKE_SOURCE_DIR}/libclang
+    -I${CMAKE_SOURCE_DIR}/plugin/mutate/source
+    -I${CMAKE_SOURCE_DIR}/vendor/d2sqlite3/source
+    -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src
+    -I${CMAKE_SOURCE_DIR}/libs/microrm/source
+    -I${CMAKE_SOURCE_DIR}/dextool_clang_extensions/source
+    -I${CMAKE_SOURCE_DIR}/vendor/cachetools/source
+    -I${CMAKE_SOURCE_DIR}/vendor/arsd"
+)
+
 set(deps "dextool_d2sqlite3;dextool_sumtype;dextool_microrm;dextool_mutantschemata_cpp_source")
 
 compile_d_static_lib(dextool_mutantschemata "${SRC_FILES}" "${flags}" "" "${deps}")

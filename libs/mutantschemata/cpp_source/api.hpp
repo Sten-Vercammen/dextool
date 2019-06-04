@@ -35,8 +35,9 @@ public:
     virtual void apiDeleteFile();
     virtual void apiDeleteFile(CppString::CppBytes);
     virtual void apiDeleteFile(CppString::CppStr);
+    virtual CppString::CppStr apiFindInclude(CppString::CppStr, CppString::CppStr);
 };
 
-void runSchemataCpp (SchemataApiCpp *sac);
+void runSchemataCpp (SchemataApiCpp *sac, CppString::CppStr cs);
 
 #endif
