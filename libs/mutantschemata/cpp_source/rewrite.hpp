@@ -78,6 +78,11 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Rewrite/Frontend/Rewriters.h"
 
+
+#ifndef MS_CLANG_REWRITE
+#define MS_CLANG_REWRITE
+
+
 using namespace clang;
 
 int mutant_count = 1;
@@ -495,7 +500,7 @@ void setupClang(char* allFiles, char* includeDir, char* workingDir) {
     
 }
 
-int main(int argc, char *argv[]) {
+int old_main(int argc, char *argv[]) {
     if (argc != 4) {
         llvm::errs() << "Usage: rewritersample <file,otherfile,...> includeDir workingDir\n";
         return 1;
@@ -505,3 +510,5 @@ int main(int argc, char *argv[]) {
     
     return mutant_count;
 }
+
+#endif // MS_CLANG_REWRITE

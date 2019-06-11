@@ -11,6 +11,7 @@ C++ part of the SchemataApi. Meant to be used by the Mutant Schemata C++ library
 in order to call D code and insert/select mutants from db obtained from Dextool mutate.
 */
 #include "api.hpp"
+#include "rewrite.hpp"
 
 #include <iostream>
 
