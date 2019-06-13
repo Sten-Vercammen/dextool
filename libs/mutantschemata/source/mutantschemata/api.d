@@ -28,7 +28,7 @@ import mutantschemata.d_string: cppToD, dToCpp;
 import mutantschemata.externals;
 import mutantschemata.utility: findInclude;
 
-import microrm : Microrm, buildSchema, delete_, insert, select;
+import miniorm : Miniorm, buildSchema, delete_, insert, select;
 import dextool.type: Path;
 import dextool.plugin.mutate.backend.database: MutationPointTbl;
 import dextool.compilation_db: CompileCommandDB;
@@ -56,12 +56,12 @@ SchemataFileString convert(SchemataFile sf) {
 
 // D class, connection to C++ code in /cpp_source
 class SchemataApi: SchemataApiCpp {
-    private Microrm db;
+    private Miniorm db;
     private CompileCommandDB ccdb;
 
     this(Path path, CompileCommandDB c) {
         ccdb = c;
-        db = Microrm(path);
+        db = Miniorm(path);
     }
     // Override of functions in external interface
     extern (C++) void apiInsertSchemataMutant(SchemataMutant sm) {

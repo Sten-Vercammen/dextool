@@ -47,12 +47,12 @@ set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
     -I${CMAKE_SOURCE_DIR}/plugin/mutate/source
     -I${CMAKE_SOURCE_DIR}/vendor/d2sqlite3/source
     -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src
-    -I${CMAKE_SOURCE_DIR}/libs/microrm/source
+    -I${CMAKE_SOURCE_DIR}/vendor/miniorm/source
     -I${CMAKE_SOURCE_DIR}/dextool_clang_extensions/source
     -I${CMAKE_SOURCE_DIR}/vendor/cachetools/source
     -I${CMAKE_SOURCE_DIR}/vendor/arsd"
 )
 
-set(deps "dextool_d2sqlite3;dextool_sumtype;dextool_microrm;dextool_mutantschemata_cpp_source")
+set(deps "dextool_d2sqlite3;dextool_sumtype;dextool_miniorm;dextool_mutantschemata_cpp_source")
 
 compile_d_static_lib(dextool_mutantschemata "${SRC_FILES}" "${flags}" "" "${deps}")
