@@ -12,7 +12,31 @@ set_target_properties(dextool_mutantschemata_cpp_source PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
     )
-target_link_libraries(dextool_mutantschemata_cpp_source)
+# add clang libs
+target_link_libraries(dextool_mutantschemata_cpp_source
+        clangAST
+        clangASTMatchers
+        clangAnalysis
+        clangBasic
+        clangDriver
+        clangEdit
+        clangFrontend
+        clangFrontendTool
+        clangLex
+        clangParse
+        clangSema
+        clangEdit
+        clangRewrite
+        clangRewriteFrontend
+        clangStaticAnalyzerFrontend
+        clangStaticAnalyzerCheckers
+        clangStaticAnalyzerCore
+        clangIndex
+        clangSerialization
+        clangToolingCore
+        clangTooling
+        clangFormat
+)
 
 ### The D-library
 file(GLOB_RECURSE SRC_FILES ${CMAKE_CURRENT_LIST_DIR}/source/mutantschemata/*.d)
