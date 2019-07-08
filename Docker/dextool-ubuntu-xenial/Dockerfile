@@ -1,8 +1,8 @@
-FROM ubuntu:xenial AS base
+FROM ubuntu:bionic AS base
 MAINTAINER Joakim Brännström <joakim.brannstrom@gmx.com>
 
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install wget
+    apt-get -y --no-install-recommends install wget gnupg
 
 RUN wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 
