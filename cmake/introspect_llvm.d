@@ -111,9 +111,7 @@ string llvmVersion() {
 
 string llvmCxxFlags() {
     const flags = execute([llvmCmd, "--cxxflags"]);
-
-    // -std=c++0x is required to run on travis.
-    return flags.output.strip ~ " -std=c++0x -finline-functions -fno-strict-aliasing -fno-exceptions -fno-rtti";
+    return flags.output.strip;
 }
 
 string llvmLibdir() {
