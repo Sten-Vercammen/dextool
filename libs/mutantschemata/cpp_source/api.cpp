@@ -14,8 +14,10 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 #include "rewrite.hpp"
 
 #include <iostream>
+ #include <cstring>
 
 void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
+/*
     CppString::CppStr include = CppString::getStr("fibonacci_example.hpp"); // the file included with "#include "fibonacci_example.hpp""
     std::cout << "trying findInclude from Cpp-side" << std::endl;
     CppString::CppStr res = sac->apiFindInclude(cs, include);
@@ -49,4 +51,14 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
 
         after_edit.print();
     }
+*/
+  std::cout << "here is: " << *cs.cppStr << std::endl;
+        //llvm::errs() << "Usage: rewritersample <file,otherfile,...> includeDir workingDir\n";
+       // return 1;
+
+  char cstr[cs.cppStr->size()+1];
+  strcpy(cstr, cs.cppStr->c_str());
+
+  setupClang(cstr, ".", ".");
+
 }
