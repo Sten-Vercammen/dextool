@@ -14,28 +14,26 @@ set_target_properties(dextool_mutantschemata_cpp_source PROPERTIES
     )
 # add clang libs
 target_link_libraries(dextool_mutantschemata_cpp_source
-        clangAST
-        clangASTMatchers
-        clangAnalysis
-        clangBasic
-        clangDriver
-        clangEdit
-        clangFrontend
-        clangFrontendTool
-        clangLex
-        clangParse
-        clangSema
-        clangEdit
-        clangRewrite
-        clangRewriteFrontend
-        clangStaticAnalyzerFrontend
-        clangStaticAnalyzerCheckers
-        clangStaticAnalyzerCore
-        clangIndex
-        clangSerialization
-        clangToolingCore
-        clangTooling
-        clangFormat
+  clangTooling
+  clangFrontendTool
+  clangFrontend
+  clangDriver
+  clangSerialization
+  clangCodeGen
+  clangParse
+  clangSema
+  clangStaticAnalyzerFrontend
+  clangStaticAnalyzerCheckers
+  clangStaticAnalyzerCore
+  clangAnalysis
+  clangARCMigrate
+  clangRewrite
+  clangRewriteFrontend
+  clangEdit
+  clangAST
+  clangLex
+  clangBasic
+  clang
 )
 
 ### The D-library
