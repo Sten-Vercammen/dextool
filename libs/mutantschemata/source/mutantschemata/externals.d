@@ -11,15 +11,40 @@ All the external items used in the api between C++ and D code
 */
 module mutantschemata.externals;
 
+// External C++ interface
+extern (C++):
+    interface SchemataApiCpp {
+        void apiInsertSchemataMutant(SchemataMutant);
+        void apiInsertSchemataFile(SchemataFile);
+        SchemataMutant apiSelectSchemataMutant();
+        SchemataMutant apiSelectSchemataMutant(CppBytes);
+        SchemataMutant apiSelectSchemataMutant(CppStr);
+        SchemataMutant apiSelectMutant();
+        SchemataMutant apiSelectMutant(CppBytes);
+        SchemataMutant apiSelectMutant(CppStr);
+        void apiBuildMutant();
+        void apiBuildFile();
+        void apiDeleteMutant(CppBytes);
+        void apiDeleteMutant(CppStr);
+        void apiDeleteMutant(CppBytes);
+        void apiDeleteFile();
+        void apiDeleteFile(CppBytes);
+        void apiDeleteFile(CppBytes);
+        CppStr apiFindInclude(CppStr, CppStr);
+    }
+
+    // External C++ functions
+    void runSchemataCpp(SchemataApiCpp, CppStr);
+
 // External C++ string implementation
-extern (C++, CppString) {
-    extern (C++) struct CppBytes {
+extern (C++, CppString):
+    struct CppBytes {
         void* ptr;
         int length;
 
         void destroy();
     }
-    extern (C++) struct CppStr {
+    struct CppStr {
         void* cppStr;
 
         const(void)* ptr();
@@ -27,55 +52,30 @@ extern (C++, CppString) {
         void destroy();
         void put(char);
     }
-    extern (C++) CppBytes getBytes();
-    extern (C++) CppStr getStr();
-    extern (C++) CppStr createCppStr();
-}
+    CppBytes getBytes();
+    CppStr getStr();
+    CppStr createCppStr();
+
 
 // External C++ types
-extern (C++, CppType) {
-    extern (C++) struct SourceLoc {
+extern (C++, CppType):
+    struct SourceLoc {
         uint line;
         uint column;
     }
-    extern (C++) struct Offset {
+    struct Offset {
         uint begin;
         uint end;
     }
-    extern (C++) struct SchemataMutant {
+    struct SchemataMutant {
         SourceLoc loc;
         Offset offset;
         int inject;
 
         void print();
     }
-    extern (C++) struct SchemataFile {
+    struct SchemataFile {
         CppStr fpath;
         SchemataMutant[] mutants;
         CppStr code;
     }
-}
-
-// External C++ interface
-extern (C++) interface SchemataApiCpp {
-    void apiInsertSchemataMutant(SchemataMutant);
-    void apiInsertSchemataFile(SchemataFile);
-    SchemataMutant apiSelectSchemataMutant();
-    SchemataMutant apiSelectSchemataMutant(CppBytes);
-    SchemataMutant apiSelectSchemataMutant(CppStr);
-    SchemataMutant apiSelectMutant();
-    SchemataMutant apiSelectMutant(CppBytes);
-    SchemataMutant apiSelectMutant(CppStr);
-    void apiBuildMutant();
-    void apiBuildFile();
-    void apiDeleteMutant(CppBytes);
-    void apiDeleteMutant(CppStr);
-    void apiDeleteMutant(CppBytes);
-    void apiDeleteFile();
-    void apiDeleteFile(CppBytes);
-    void apiDeleteFile(CppBytes);
-    CppStr apiFindInclude(CppStr, CppStr);
-}
-
-// External C++ functions
-extern (C++) void runSchemataCpp(SchemataApiCpp, CppStr);

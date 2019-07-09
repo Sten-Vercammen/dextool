@@ -17,12 +17,12 @@ C++ types for easier communication between C++ and D code.
 namespace CppType {
 
 struct SourceLoc {
-    unsigned line;
-    unsigned column;
+    unsigned int line;
+    unsigned int column;
 };
 struct Offset {
-    unsigned begin;
-    unsigned end;
+    unsigned int begin;
+    unsigned int end;
 };
 struct SchemataMutant {
     SourceLoc loc;
