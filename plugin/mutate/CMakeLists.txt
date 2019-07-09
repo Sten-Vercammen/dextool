@@ -12,7 +12,7 @@ build_d_executable(
     "${SRC_FILES}"
     "${flags}"
     ""
-    "dextool_blob_model;dextool_dextool;dextool_cpptooling;dextool_plugin_utility;dextool_clang_extensions;dextool_miniorm;dextool_d2sqlite3;dextool_colorlog;dextool_toml;dextool_arsd;dextool_cachetools;dextool_mutantschemata"
+    "dextool_blob_model;dextool_dextool;dextool_cpptooling;dextool_plugin_utility;dextool_clang_extensions;dextool_miniorm;dextool_d2sqlite3;dextool_colorlog;dextool_toml;dextool_arsd;dextool_cachetools;dextool_mutantschemata;dextool_mutantschemata_cpp_source"
 )
 
 collect_binary_in_root(${EXE_NAME})

@@ -47,6 +47,7 @@ struct ArgParser {
 
     struct Data {
         string[] inFiles;
+        string schemata;
 
         AbsolutePath db;
 
@@ -203,6 +204,7 @@ struct ArgParser {
                    "in", "Input file to parse (default: all files in the compilation database)", &data.inFiles,
                    "out", out_help, &workArea.rawRoot,
                    "restrict", restrict_help, &workArea.rawRestrict,
+                   "schemata", "Use mutantschemata while mutation testing", &data.schemata
                    );
             // dfmt on
 

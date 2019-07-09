@@ -265,28 +265,43 @@ ExitStatusType modeInitConfig(ref ArgParser conf) @safe {
     return ExitStatusType.Errors;
 }
 
-// should not be trusted, temporary for mutant schemata testing
-ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) @trusted {
+ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) {
     import dextool.plugin.mutate.backend : runAnalyzer;
     import dextool.plugin.mutate.frontend.argparser : printFileAnalyzeHelp;
 
-    // leaving this code ensures dextool still work the same way
-    printFileAnalyzeHelp(conf);
-    ExitStatusType est = runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
+    ExitStatusType est;
 
-    // call the schemataApi
+    if (conf.data.schemata) {
+        est = modeSchemata(conf, dacc);
+    } else {
+        printFileAnalyzeHelp(conf);
+        est = runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
+    }
+
+    return est;
+}
+
+// should not be trusted, temporary for mutant schemata testing
+ExitStatusType modeSchemata(ref ArgParser conf, ref DataAccess dacc) @trusted {
     import mutantschemata;
     import dextool.type: Path;
 
-    Path db = Path("dextool_mutate.sqlite3");
-    SchemataApi sa = makeSchemataApi(db, dacc.fusedCompileDb);
+    import std.stdio: writeln;
+    writeln(conf.data.db);
 
-    foreach (f; dacc.db.getFiles()){
-        sa.runSchemata(f);
+    try {
+        Path db = Path("dextool_mutate.sqlite3");
+        SchemataApi sa = makeSchemataApi(db, dacc.fusedCompileDb);
+
+        foreach (f; dacc.db.getFiles()){
+            sa.runSchemata(f);
+        }
+        sa.apiClose();
+    } catch (Exception e) {
+        () @trusted { logger.trace(e); logger.warning(e.msg); }();
     }
-    sa.apiClose();
-
-    return est;
+    
+    return ExitStatusType.Ok;
 }
 
 ExitStatusType modeGenerateMutant(ref ArgParser conf, ref DataAccess dacc) {
