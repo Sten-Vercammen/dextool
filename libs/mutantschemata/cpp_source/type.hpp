@@ -9,20 +9,19 @@ one at http://mozilla.org/MPL/2.0/.
 
 C++ types for easier communication between C++ and D code.
 */
-#ifndef TYPE_CPP
-#define TYPE_CPP
+#pragma once
 
 #include "cpp_string.hpp"
 
 namespace CppType {
 
 struct SourceLoc {
-    unsigned int line;
-    unsigned int column;
+    uint64_t line;
+    uint64_t column;
 };
 struct Offset {
-    unsigned int begin;
-    unsigned int end;
+    uint64_t begin;
+    uint64_t end;
 };
 struct SchemataMutant {
     SourceLoc loc;
@@ -38,5 +37,3 @@ struct SchemataFile {
 };
 
 }
-
-#endif

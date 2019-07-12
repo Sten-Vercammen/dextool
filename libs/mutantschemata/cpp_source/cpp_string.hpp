@@ -10,8 +10,7 @@ one at http://mozilla.org/MPL/2.0/.
 Headerfile for cpp_string.cpp
 String implementation for sending strings back and forth between D and C++
 */
-#ifndef CPP_STRING
-#define CPP_STRING
+#pragma once
 
 #include <stdint.h>
 #include <string.h>
@@ -41,5 +40,3 @@ CppStr getStr(const char*);
 CppStr createCppStr();
 
 } // CppString
-
-#endif
