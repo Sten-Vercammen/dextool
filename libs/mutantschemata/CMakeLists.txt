@@ -49,9 +49,13 @@ set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
     -I${CMAKE_SOURCE_DIR}/vendor/miniorm/source
     -I${CMAKE_SOURCE_DIR}/libs/dextool_clang_extensions/source
     -I${CMAKE_SOURCE_DIR}/vendor/cachetools/source
-    -I${CMAKE_SOURCE_DIR}/vendor/arsd"
+    -I${CMAKE_SOURCE_DIR}/vendor/arsd
+    -I${CMAKE_SOURCE_DIR}/vendor/blob_model/source
+    -I${CMAKE_SOURCE_DIR}/vendor/taggedalgebraic/source
+    -I${CMAKE_SOURCE_DIR}/vendor/colorlog/source
+    -I${CMAKE_SOURCE_DIR}/vendor/toml/src
+    -I${CMAKE_SOURCE_DIR}/dsrcgen/source"
 )
-
 set(deps "dextool_mutantschemata_cpp_source;dextool_d2sqlite3;dextool_sumtype;dextool_miniorm")
 
 compile_d_static_lib(dextool_mutantschemata "${SRC_FILES}" "${flags}" "" "${deps}")
