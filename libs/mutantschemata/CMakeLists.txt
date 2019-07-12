@@ -39,14 +39,14 @@ target_link_libraries(dextool_mutantschemata_cpp_source
 ### The D-library
 file(GLOB_RECURSE SRC_FILES ${CMAKE_CURRENT_LIST_DIR}/source/mutantschemata/*.d)
 set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
-    -I${CMAKE_SOURCE_DIR}/source
-    -I${CMAKE_SOURCE_DIR}/clang
-    -I${CMAKE_SOURCE_DIR}/libclang
+    -I${CMAKE_SOURCE_DIR}/libs/dextool/source
+    -I${CMAKE_SOURCE_DIR}/libs/clang/source
+    -I${CMAKE_SOURCE_DIR}/libs/libclang/source
     -I${CMAKE_SOURCE_DIR}/plugin/mutate/source
     -I${CMAKE_SOURCE_DIR}/vendor/d2sqlite3/source
     -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src
     -I${CMAKE_SOURCE_DIR}/vendor/miniorm/source
-    -I${CMAKE_SOURCE_DIR}/dextool_clang_extensions/source
+    -I${CMAKE_SOURCE_DIR}/libs/dextool_clang_extensions/source
     -I${CMAKE_SOURCE_DIR}/vendor/cachetools/source
     -I${CMAKE_SOURCE_DIR}/vendor/arsd"
 )
