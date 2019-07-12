@@ -7,16 +7,12 @@ This Source Code Form is subject to the terms of the Mozilla Public License,
 v.2.0. If a copy of the MPL was not distributed with this file, You can obtain
 one at http://mozilla.org/MPL/2.0/.
 
-File for handling the db connection, previously included in api.d
+File for handling the db connection
 */
 module mutantschemata.db_handler;
 
-import mutantschemata.externals;
-
 import miniorm : Miniorm, buildSchema, delete_, insert, select;
 import dextool.type: Path;
-import dextool.plugin.mutate.backend.database: MutationPointTbl;
-import dextool.compilation_db: CompileCommandDB;
 
 import std.range: front;
 import std.array: array, empty;

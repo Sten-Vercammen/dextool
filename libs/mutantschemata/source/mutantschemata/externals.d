@@ -60,12 +60,12 @@ extern (C++, CppString):
 // External C++ types
 extern (C++, CppType):
     struct SourceLoc {
-        uint line;
-        uint column;
+        ulong line;
+        ulong column;
     }
     struct Offset {
-        uint begin;
-        uint end;
+        ulong begin;
+        ulong end;
     }
     struct SchemataMutant {
         SourceLoc loc;

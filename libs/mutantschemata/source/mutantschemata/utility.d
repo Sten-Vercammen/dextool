@@ -12,6 +12,8 @@ Utility functionality for mutantschemata API.
 module mutantschemata.utility;
 
 import mutantschemata.externals;
+import mutantschemata.type;
+import mutantschemata.d_string;
 
 import dextool.plugin.mutate.backend.database: MutationPointTbl;
 
@@ -30,7 +32,6 @@ Path findInclude(ref CompileCommandDB ccdb, Path file, Path include) {
 
     return findIncludePath(pf, include);
 }
-
 Path findIncludePath(ParseFlags pf, Path include) {
     import std.algorithm: filter;
     import std.file: isFile;
@@ -40,7 +41,6 @@ Path findIncludePath(ParseFlags pf, Path include) {
     auto res = pf.includes.filter!(includepath => isFile(includepath ~ "/" ~ include)).array;
     return Path(res.empty ? "" : res.front);
 }
-
 SchemataMutant createSchemataMutant() {
     return SchemataMutant(SourceLoc(0,0), Offset(0,0), -1);
 }
@@ -52,4 +52,9 @@ SchemataMutant createSchemataMutant(MutationPointTbl mpt) {
 }
 SchemataMutant sanitize(T)(T[] t) {
     return t.empty ? createSchemataMutant() : createSchemataMutant(t.front);
+}
+SchemataFileString convertToFs(SchemataFile sf) {
+    return SchemataFileString(cppToD!CppStr(sf.fpath),
+                                sf.mutants,
+                                cppToD!CppStr(sf.code));
 }
