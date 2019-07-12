@@ -39,6 +39,7 @@ target_link_libraries(dextool_mutantschemata_cpp_source
 ### The D-library
 file(GLOB_RECURSE SRC_FILES ${CMAKE_CURRENT_LIST_DIR}/source/mutantschemata/*.d)
 set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
+    -I${CMAKE_SOURCE_DIR}/libs/cpptooling/source
     -I${CMAKE_SOURCE_DIR}/libs/dextool/source
     -I${CMAKE_SOURCE_DIR}/libs/clang/source
     -I${CMAKE_SOURCE_DIR}/libs/libclang/source
