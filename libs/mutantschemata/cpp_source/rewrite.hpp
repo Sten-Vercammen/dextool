@@ -488,7 +488,7 @@ void setupClang(int argc, const char **argv) {
     overWriteChangedFile();
     llvm::errs() << "\nMutations found: " << mutant_count - 1 << "\n";
     
-    return result;
+//    return result;
 }
 
 #endif // MS_CLANG_REWRITE

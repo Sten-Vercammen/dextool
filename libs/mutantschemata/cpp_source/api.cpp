@@ -15,6 +15,7 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 
 #include <iostream>
 #include <cstring>
+#include <sstream>
 
 void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
     std::cout << "here is: " << *cs.cppStr << std::endl;
@@ -24,11 +25,17 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
     strcpy(cstr, cs.cppStr->c_str());
 
 
+    std::string buf;		// Have a buffer string
+    std::stringstream ss(cstr);	// Insert the string into a stream
+
+    std::vector<std::string> filesToMutate; // Create vector to hold our words
+    while(getline(ss, buf, ',')) {
+        filesToMutate.push_back(buf);
+    }
 
 
     //TODO fix these, these needs to be provided by the API
     std::string compilationDatabasePath = "/path/to/compilationDatabase";
-    std::vector<std::string> filesToMutate = {"path", "relative", "or", "absolute"};
 
 
     // creating the strings we want in our fake argv
@@ -36,7 +43,7 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
     arguments.insert(arguments.end(), filesToMutate.begin(), filesToMutate.end());
 
     // populate the fake argv
-    std::vector<char*> argv;
+    std::vector<const char*> argv;
     for (const auto& arg : arguments) {
         argv.push_back((char*)arg.data());
     }
