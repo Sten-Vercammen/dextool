@@ -30,7 +30,7 @@ import mutantschemata.utility: findInclude, sanitize, convertToFs;
 import mutantschemata.db_handler;
 import mutantschemata.type;
 
-import dextool.type: Path;
+import dextool.type: AbsolutePath, Path;
 import dextool.plugin.mutate.backend.database: MutationPointTbl;
 import dextool.compilation_db: CompileCommandDB;
 
@@ -40,8 +40,8 @@ import std.array: array, empty;
 import logger = std.experimental.logger;
 
 // Entry point for Dextool mutate
-SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb) {
-    SchemataApi sa = new SchemataApi(db, ccdb);
+SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) {
+    SchemataApi sa = new SchemataApi(db, ccdb, ccdbPath);
     return sa;
 }
 
@@ -49,10 +49,12 @@ SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb) {
 extern (C++) class SchemataApi: SchemataApiCpp {
     private DBHandler handler;
     private CompileCommandDB ccdb;
+    private AbsolutePath ccdbPath;
 
-    this(Path dbPath, CompileCommandDB c) {
+    this(Path dbPath, CompileCommandDB c, AbsolutePath cPath) {
         handler = DBHandler(dbPath);
         ccdb = c;
+        ccdbPath = cPath;
     }
 
     // Override of functions in external interface
@@ -74,7 +76,6 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     SchemataMutant apiSelectMutant() {
         return sanitize(handler.selectFromDB!MutationPointTbl());
     }
-
     SchemataMutant apiSelectMutant(CppBytes cb) {
         return sanitize(handler.selectFromDB!MutationPointTbl(cppToD!CppBytes(cb)));
     }
@@ -112,6 +113,6 @@ extern (C++) class SchemataApi: SchemataApiCpp {
         handler.closeDB();
     }
     void runSchemata(Path file) {
-        runSchemataCpp(this, dToCpp(file));
+        runSchemataCpp(this, dToCpp(file), dToCpp(ccdbPath));
     }
 }
