@@ -286,12 +286,9 @@ ExitStatusType modeSchemata(ref ArgParser conf, ref DataAccess dacc) @trusted {
     import mutantschemata;
     import dextool.type: Path;
 
-    import std.stdio: writeln;
-    writeln(conf.data.db);
-
     try {
-        Path db = Path("dextool_mutate.sqlite3");
-        SchemataApi sa = makeSchemataApi(db, dacc.fusedCompileDb);
+        Path db = Path(conf.data.db);
+        SchemataApi sa = makeSchemataApi(db, dacc.fusedCompileDb, conf.compileDb.dbs[0]);
 
         foreach (f; dacc.db.getFiles()){
             sa.runSchemata(f);
@@ -300,7 +297,7 @@ ExitStatusType modeSchemata(ref ArgParser conf, ref DataAccess dacc) @trusted {
     } catch (Exception e) {
         () @trusted { logger.trace(e); logger.warning(e.msg); }();
     }
-    
+
     return ExitStatusType.Ok;
 }
 

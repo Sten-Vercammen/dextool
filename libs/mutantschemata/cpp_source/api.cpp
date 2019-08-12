@@ -17,7 +17,7 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 #include <cstring>
 #include <sstream>
 
-void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
+void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs, CppString::CppStr ccdbPath){
     std::cout << "here is: " << *cs.cppStr << std::endl;
     //llvm::errs() << "Usage: rewritersample <file,otherfile,...> includeDir workingDir\n";
     // return 1;
@@ -33,10 +33,7 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
         filesToMutate.push_back(buf);
     }
 
-
-    //TODO fix these, these needs to be provided by the API
-    std::string compilationDatabasePath = "/path/to/compilationDatabase";
-
+    std::string compilationDatabasePath = ccdbPath.cppStr->c_str();
 
     // creating the strings we want in our fake argv
     std::vector<std::string> arguments = {"-p", compilationDatabasePath};
