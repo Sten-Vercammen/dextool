@@ -88,6 +88,11 @@ void writeChangedFiles(bool inPlace) {
                             std::set<std::string>::iterator it = VisitedSourcePaths.find(file->tryGetRealPathName());
                             if (it == VisitedSourcePaths.end()) {
                                 VisitedSourcePaths.insert(file->tryGetRealPathName());
+
+				// include to define identifier
+				// note: main file should contain the actual declaration (without extern)
+				const char *include = "extern int MUTANT_NR;\n";
+				I->second.InsertTextAfter(0, include);
                                 
                                 // write what's in the buffer to a temporary file
                                 // placed here to prevent writing the mutated file multiple times
