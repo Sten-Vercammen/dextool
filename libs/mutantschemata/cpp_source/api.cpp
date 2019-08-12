@@ -23,5 +23,25 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs){
     char cstr[cs.cppStr->size()+1];
     strcpy(cstr, cs.cppStr->c_str());
 
-    setupClang(cstr, ".", ".");
+
+
+
+    //TODO fix these, these needs to be provided by the API
+    std::string compilationDatabasePath = "/path/to/compilationDatabase";
+    std::vector<std::string> filesToMutate = {"path", "relative", "or", "absolute"};
+
+
+    // creating the strings we want in our fake argv
+    std::vector<std::string> arguments = {"-p", compilationDatabasePath};
+    arguments.insert(arguments.end(), filesToMutate.begin(), filesToMutate.end());
+
+    // populate the fake argv
+    std::vector<char*> argv;
+    for (const auto& arg : arguments) {
+        argv.push_back((char*)arg.data());
+    }
+    argv.push_back(nullptr);
+
+    // call setup of clang
+    setupClang(argv.size() - 1, argv.data());
 }

@@ -1,105 +1,135 @@
+//
+//  main.cpp
+//  libtooling
+//
+//  Created by Sten Vercammen on 23/07/2019.
+//  Copyright © 2019 Sten Vercammen. All rights reserved.
+//
+
+
 //------------------------------------------------------------------------------
 // Mutant schemata using Clang rewriter and RecursiveASTVisitor
 //
 // Sten Vercammem (sten.vercammen@uantwerpen.be)
 //------------------------------------------------------------------------------
 
-#include <cstdio>
-#include <memory>
+#include <set>
 #include <sstream>
-#include <string>
 #include <vector>
-#include <initializer_list>
 
-#include "clang/Analysis/CFG.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Basic/TargetOptions.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Lex/HeaderSearch.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Parse/ParseAST.h"
-#include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Rewrite/Core/RewriteBuffer.h"
-#include "clang/Rewrite/Frontend/Rewriters.h"
-#include "llvm/Support/Host.h"
-#include "llvm/Support/raw_ostream.h"
-
-
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Host.h"
-#include "llvm/Support/Casting.h"
-
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/FileSystemOptions.h"
-
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/HeaderSearch.h"
-#include "clang/Basic/FileManager.h"
-
-#include "clang/Frontend/Utils.h"
-
-#include "clang/Basic/TargetOptions.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Basic/Version.h"
-
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Frontend/FrontendOptions.h"
-
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/Builtins.h"
-
+#include "clang/AST/AST.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Sema/Sema.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/Decl.h"
-#include "clang/Sema/Lookup.h"
-#include "clang/Sema/Ownership.h"
-#include "clang/AST/DeclGroup.h"
-
-#include "clang/Parse/Parser.h"
-
-#include "clang/Parse/ParseAST.h"
+#include "clang/Frontend/ASTConsumers.h"
+#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/CompilerInstance.h"
-
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Tooling.h"
 #include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Rewrite/Frontend/Rewriters.h"
-
 
 #ifndef MS_CLANG_REWRITE
 #define MS_CLANG_REWRITE
 
 
-using namespace clang;
-
+// global vars
+clang::Rewriter rewriter;
+std::vector<std::string> SourcePaths;
+std::set<std::string> VisitedSourcePaths;
 int mutant_count = 1;
 
+// config mutant schemata (not really implemented)
 bool negateBinaryOperators = true;
 bool negateOverloadedOperators = false;
 bool negateUnaryOperators = false;
 
-// By implementing RecursiveASTVisitor, we can specify which AST nodes
-// we're interested in by overriding relevant methods.
-class MyASTVisitor : public RecursiveASTVisitor<MyASTVisitor> {
+
+/**
+ * Write the modified AST to files.
+ * Either in place, or with suffix _mutated
+ *
+ * Note: use false, as inPlace causes a sementation fault in clang's sourcemaneger calling the ComputeLineNumbers function, when used in the EndSourceFileAction.
+ * Caling rewriter.overwriteChangedFiles() after Tool.run causes a segmentation fault as some rewrite buffers are already deconstructed.
+ * This is why we need to use temp files.
+ */
+void writeChangedFiles(bool inPlace) {
+    if (inPlace) {
+        rewriter.overwriteChangedFiles();
+    } else {
+        /*
+         * iterate through rewrite buffer
+         *
+         * Note: when a (system) file is visited without being mutated,
+         * then it will currently also turn up here (as an editBuffer was created for it)
+         */
+        for (std::map<clang::FileID, clang::RewriteBuffer>::iterator I = rewriter.buffer_begin(), E = rewriter.buffer_end(); I != E; ++I) {
+            const clang::FileEntry *file = rewriter.getSourceMgr().getFileEntryForID(I->first);
+            if (file) {
+                if (file->isValid()) {
+                    // some files faile with std::malloc error as it's path size is 9*10^18 -> bad pointer?
+                    if (!file->tryGetRealPathName().empty() && file->tryGetRealPathName().size() < 1000000) {
+                        bool isSourceFile = false;
+                        // check if the edited file is one we wanted to mutate
+                        // (technically we are only changing files in SourcePaths, but somehow other files still show up in the editbuffer)
+                        for (std::string item: SourcePaths) {
+                            // are sourceFile and bufferFile equivalent (same path, takes into account different relative paths)
+                            if (llvm::sys::fs::equivalent(item, file->tryGetRealPathName())) {
+                                isSourceFile = true;
+                                break;
+                            }
+                        }
+
+                        if (isSourceFile) {
+                            /*
+                             * Mark changed file as visited, so we don't mutate it again later.
+                             * Needed as inserted mutants are new, unvisited nodes in the AST,
+                             * and we don't want to mutate them.
+                             */
+                            std::set<std::string>::iterator it = VisitedSourcePaths.find(file->tryGetRealPathName());
+                            if (it == VisitedSourcePaths.end()) {
+                                VisitedSourcePaths.insert(file->tryGetRealPathName());
+                                
+                                // write what's in the buffer to a temporary file
+                                // placed here to prevent writing the mutated file multiple times
+                                std::error_code error_code;
+                                std::string fileName = file->getName().str() + "_mutated";
+                                llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
+                                outFile << std::string(I->second.begin(), I->second.end());
+                                outFile.close();
+                                
+                                // debug output
+                                llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
+                            }
+                        }
+                    }
+                }
+            } else {
+                // not an actual file
+            }
+        }
+    }
+}
+
+/**
+ * write the temporary files over the original ones
+ */
+void overWriteChangedFile() {
+    for (std::string fileName: VisitedSourcePaths) {
+        // deletes the old file
+        std::string oldFileName = fileName + "_mutated";
+        if (std::rename(oldFileName.c_str(), fileName.c_str()) != 0) {
+            std::perror("Error renaming file");
+        }
+    }
+}
+
+class MutatingVisitor : public clang::RecursiveASTVisitor<MutatingVisitor> {
 private:
-    Rewriter &TheRewriter;
-    PrintingPolicy pp;
+    clang::ASTContext *astContext;
+    clang::PrintingPolicy pp;
+    clang::SourceManager *SourceManager;
     
-    void mutate_schemata(BinaryOperator *binOp, std::initializer_list<BinaryOperatorKind> list) {
-        
+    void insertMutantSchemata(clang::BinaryOperator *binOp, std::initializer_list<clang::BinaryOperatorKind> list) {
         // get lhs of expression
         std::string lhs;
         llvm::raw_string_ostream lhs_expr_stream(lhs);
@@ -117,126 +147,150 @@ private:
         std::string endBrackets;
         for (auto elem : list) {
             if (binOp->getOpcode() != elem) {
-                newExprStr << "(MUTANT_NR == " << mutant_count++ <<" ? " << lhs << " " << BinaryOperator::getOpcodeStr(elem).str() << " " << rhs << ": ";
+                newExprStr << "(MUTANT_NR == " << mutant_count++ <<" ? " << lhs << " " << clang::BinaryOperator::getOpcodeStr(elem).str() << " " << rhs << ": ";
                 endBrackets += ")";
             }
         }
+        
         // insert mutant before orig expression
-        TheRewriter.InsertText(binOp->getLocStart(), newExprStr.str());
+        rewriter.InsertText(binOp->getLocStart(), newExprStr.str());
         // insert brackets to close mutant schemata's if statement
-        TheRewriter.InsertTextAfterToken(binOp->getLocEnd(), endBrackets);
+        rewriter.InsertTextAfterToken(binOp->getLocEnd(), endBrackets);
+    }
+    
+    /**
+     * Check if we want to mutate this file.
+     * (if it's a sourceFile and we haven't yet visited it)
+     */
+    bool isfileToMutate(clang::FullSourceLoc FullLocation) {
+        const clang::FileEntry *fE = SourceManager->getFileEntryForID(FullLocation.getFileID());
+        if (fE) {
+            for (std::string item: SourcePaths) {
+                if (llvm::sys::fs::equivalent(item, fE->tryGetRealPathName())) {
+                    return VisitedSourcePaths.find(fE->tryGetRealPathName()) == VisitedSourcePaths.end();
+                }
+            }
+        }
+        return false;
     }
     
     
-    
 public:
-    MyASTVisitor(Rewriter &R, LangOptions &lo) : TheRewriter(R), pp(lo) {}
+    explicit MutatingVisitor(clang::CompilerInstance *CI): astContext(&(CI->getASTContext())), pp(astContext->getLangOpts()) {
+        SourceManager = &astContext->getSourceManager();
+        rewriter.setSourceMgr(astContext->getSourceManager(), astContext->getLangOpts());
+    }
     
-    bool VisitStmt(Stmt *s) {
+    virtual bool VisitStmt(clang::Stmt *s) {
+        clang::FullSourceLoc FullLocation = astContext->getFullLoc(s->getLocStart());
+        if (!isfileToMutate(FullLocation)) {
+            return true;
+        }
+        
         // mutate all expressions
-        if (isa<Expr>(s)) {
-            if (isa<BinaryOperator>(s)) {
-                BinaryOperator *binOp = cast<BinaryOperator>(s);
+        if (clang::isa<clang::Expr>(s)) {
+            if (clang::isa<clang::BinaryOperator>(s)) {
+                clang::BinaryOperator *binOp = clang::cast<clang::BinaryOperator>(s);
                 if (negateBinaryOperators) {
                     switch (binOp->getOpcode()) {
                             // Multiplicative operators
-                        case BO_Mul:
-                            mutate_schemata(binOp, {BO_Div});
+                        case clang::BO_Mul:
+                            insertMutantSchemata(binOp, {clang::BO_Div});
                             break;
-                        case BO_Div:
-                            mutate_schemata(binOp, {BO_Mul});
+                        case clang::BO_Div:
+                            insertMutantSchemata(binOp, {clang::BO_Mul});
                             break;
-                        case BO_Rem:
+                        case clang::BO_Rem:
                             //TODO
                             break;
                             // Additive operators
-                        case BO_Add:
-                            mutate_schemata(binOp, {BO_Sub});
+                        case clang::BO_Add:
+                            insertMutantSchemata(binOp, {clang::BO_Sub});
                             break;
-                        case BO_Sub:
-                            mutate_schemata(binOp, {BO_Add});
+                        case clang::BO_Sub:
+                            insertMutantSchemata(binOp, {clang::BO_Add});
                             break;
                             // Bitwise shift operators
-                        case BO_Shl:
-                            mutate_schemata(binOp, {BO_Shr});
+                        case clang::BO_Shl:
+                            insertMutantSchemata(binOp, {clang::BO_Shr});
                             break;
-                        case BO_Shr:
-                            mutate_schemata(binOp, {BO_Shl});
+                        case clang::BO_Shr:
+                            insertMutantSchemata(binOp, {clang::BO_Shl});
                             break;
                             // Three-way comparison operator
-                            //case BO_Cmp:
+                            //case clang::BO_Cmp:
                             //TODO
                             //    break;
                             // Relational operators
-                        case BO_LT:
-                            mutate_schemata(binOp, {BO_GT});
+                        case clang::BO_LT:
+                            insertMutantSchemata(binOp, {clang::BO_GT});
                             break;
-                        case BO_GT:
-                            mutate_schemata(binOp, {BO_LT});
+                        case clang::BO_GT:
+                            insertMutantSchemata(binOp, {clang::BO_LT});
                             break;
-                        case BO_LE:
-                            mutate_schemata(binOp, {BO_GE});
+                        case clang::BO_LE:
+                            insertMutantSchemata(binOp, {clang::BO_GE});
                             break;
-                        case BO_GE:
-                            mutate_schemata(binOp, {BO_LE});
+                        case clang::BO_GE:
+                            insertMutantSchemata(binOp, {clang::BO_LE});
                             break;
                             // Equality operators
-                        case BO_EQ:
-                            mutate_schemata(binOp, {BO_NE});
+                        case clang::BO_EQ:
+                            insertMutantSchemata(binOp, {clang::BO_NE});
                             break;
-                        case BO_NE:
-                            mutate_schemata(binOp, {BO_EQ});
+                        case clang::BO_NE:
+                            insertMutantSchemata(binOp, {clang::BO_EQ});
                             break;
                             // Bitwise AND operator
-                        case BO_And:
-                            mutate_schemata(binOp, {BO_Or});
+                        case clang::BO_And:
+                            insertMutantSchemata(binOp, {clang::BO_Or});
                             break;
-                        case BO_Xor:
+                        case clang::BO_Xor:
                             //TODO
                             break;
-                        case BO_Or:
-                            mutate_schemata(binOp, {BO_And});
+                        case clang::BO_Or:
+                            insertMutantSchemata(binOp, {clang::BO_And});
                             break;
                             // Logical AND operator
-                        case BO_LAnd:
-                            mutate_schemata(binOp, {BO_LOr});
+                        case clang::BO_LAnd:
+                            insertMutantSchemata(binOp, {clang::BO_LOr});
                             break;
-                        case BO_LOr:
-                            mutate_schemata(binOp, {BO_LAnd});
+                        case clang::BO_LOr:
+                            insertMutantSchemata(binOp, {clang::BO_LAnd});
                             break;
                             // Assignment operators
-                        case BO_Assign:
+                        case clang::BO_Assign:
                             //TODO
                             break;
-                        case BO_MulAssign:
-                            mutate_schemata(binOp, {BO_DivAssign});
+                        case clang::BO_MulAssign:
+                            insertMutantSchemata(binOp, {clang::BO_DivAssign});
                             break;
-                        case BO_DivAssign:
-                            mutate_schemata(binOp, {BO_MulAssign});
+                        case clang::BO_DivAssign:
+                            insertMutantSchemata(binOp, {clang::BO_MulAssign});
                             break;
-                        case BO_RemAssign:
+                        case clang::BO_RemAssign:
                             //TODO
                             break;
-                        case BO_AddAssign:
-                            mutate_schemata(binOp, {BO_SubAssign});
+                        case clang::BO_AddAssign:
+                            insertMutantSchemata(binOp, {clang::BO_SubAssign});
                             break;
-                        case BO_SubAssign:
-                            mutate_schemata(binOp, {BO_AddAssign});
+                        case clang::BO_SubAssign:
+                            insertMutantSchemata(binOp, {clang::BO_AddAssign});
                             break;
-                        case BO_ShlAssign:
-                            mutate_schemata(binOp, {BO_ShrAssign});
+                        case clang::BO_ShlAssign:
+                            insertMutantSchemata(binOp, {clang::BO_ShrAssign});
                             break;
-                        case BO_ShrAssign:
-                            mutate_schemata(binOp, {BO_ShlAssign});
+                        case clang::BO_ShrAssign:
+                            insertMutantSchemata(binOp, {clang::BO_ShlAssign});
                             break;
-                        case BO_AndAssign:
-                            mutate_schemata(binOp, {BO_OrAssign});
+                        case clang::BO_AndAssign:
+                            insertMutantSchemata(binOp, {clang::BO_OrAssign});
                             break;
-                        case BO_XorAssign:
+                        case clang::BO_XorAssign:
                             //TODO
                             break;
-                        case BO_OrAssign:
-                            mutate_schemata(binOp, {BO_AndAssign});
+                        case clang::BO_OrAssign:
+                            insertMutantSchemata(binOp, {clang::BO_AndAssign});
                             break;
                         default:
                             break;
@@ -247,44 +301,44 @@ public:
                     if (binOp->isPtrMemOp()) {
                         
                         
-                    } else if (binOp->isMultiplicativeOp()) {   // BO_Mul, BO_Div, BO_Rem
-                        mutate_schemata(binOp, {BO_Mul, BO_Div, BO_Rem});
-                    } else if (binOp->isAdditiveOp()) {         // BO_Add, BO_Sub
-                        mutate_schemata(binOp, {BO_Add, BO_Sub});
-                    } else if (binOp->isShiftOp()) {            // BO_Shl, BO_Shr
-                        mutate_schemata(binOp, {BO_Shl, BO_Shr});
-                    } else if (binOp->isBitwiseOp()) {          // BO_And, BO_Xor, BO_Or
-                        mutate_schemata(binOp, {BO_And, BO_Xor, BO_Or});
-                    } else if (binOp->isRelationalOp()) {       // BO_LT, BO_GT, BO_LE, BO_GE
-                        mutate_schemata(binOp, {BO_LT, BO_GT, BO_LE, BO_GE});
-                    } else if (binOp->isEqualityOp()) {         // BO_EQ, BO_NE
-                        mutate_schemata(binOp, {BO_EQ, BO_NE});
-                    } else if (binOp->isComparisonOp()) {       // BO_Cmp, isEqualityOp, isRelationalOp
-                        mutate_schemata(binOp, {BO_EQ, BO_LT, BO_GT, BO_LE, BO_GE, BO_NE});
-                    } else if (binOp->isLogicalOp()) {          // BO_LAnd, BO_LOr
-                        mutate_schemata(binOp, {BO_LAnd, BO_LOr});
-                    } else if (binOp->isAssignmentOp()) {       // BO_Assign, BO_MulAssign, BO_DivAssign, BO_RemAssign, BO_AddAssign, BO_SubAssign, BO_ShlAssign, BO_ShrAssign, BO_AndAssign, BO_XorAssign, BO_OrAssign
-                        mutate_schemata(binOp, {BO_Assign, BO_MulAssign, BO_DivAssign, BO_RemAssign, BO_AddAssign, BO_SubAssign, BO_ShlAssign, BO_ShrAssign, BO_AndAssign, BO_XorAssign, BO_OrAssign});
-                    } else if (binOp->isCompoundAssignmentOp()) {   // BO_MulAssign, BO_DivAssign, BO_RemAssign, BO_AddAssign, BO_SubAssign, BO_ShlAssign, BO_ShrAssign, BO_AndAssign, BO_XorAssign, BO_OrAssign
-                        mutate_schemata(binOp, {BO_MulAssign, BO_DivAssign, BO_RemAssign, BO_AddAssign, BO_SubAssign, BO_ShlAssign, BO_ShrAssign, BO_AndAssign, BO_XorAssign, BO_OrAssign});
-                    } else if (binOp->isShiftAssignOp()) {      // BO_ShlAssign, BO_ShrAssign
-                        mutate_schemata(binOp, {BO_ShlAssign, BO_ShrAssign});
+                    } else if (binOp->isMultiplicativeOp()) {   // clang::BO_Mul, clang::BO_Div, clang::BO_Rem
+                        insertMutantSchemata(binOp, {clang::BO_Mul, clang::BO_Div, clang::BO_Rem});
+                    } else if (binOp->isAdditiveOp()) {         // clang::BO_Add, clang::BO_Sub
+                        insertMutantSchemata(binOp, {clang::BO_Add, clang::BO_Sub});
+                    } else if (binOp->isShiftOp()) {            // clang::BO_Shl, clang::BO_Shr
+                        insertMutantSchemata(binOp, {clang::BO_Shl, clang::BO_Shr});
+                    } else if (binOp->isBitwiseOp()) {          // clang::BO_And, clang::BO_Xor, clang::BO_Or
+                        insertMutantSchemata(binOp, {clang::BO_And, clang::BO_Xor, clang::BO_Or});
+                    } else if (binOp->isRelationalOp()) {       // clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE
+                        insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE});
+                    } else if (binOp->isEqualityOp()) {         // clang::BO_EQ, clang::BO_NE
+                        insertMutantSchemata(binOp, {clang::BO_EQ, clang::BO_NE});
+                    } else if (binOp->isComparisonOp()) {       // clang::BO_Cmp, isEqualityOp, isRelationalOp
+                        insertMutantSchemata(binOp, {clang::BO_EQ, clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE, clang::BO_NE});
+                    } else if (binOp->isLogicalOp()) {          // clang::BO_LAnd, clang::BO_LOr
+                        insertMutantSchemata(binOp, {clang::BO_LAnd, clang::BO_LOr});
+                    } else if (binOp->isAssignmentOp()) {       // clang::BO_Assign, clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign
+                        insertMutantSchemata(binOp, {clang::BO_Assign, clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign});
+                    } else if (binOp->isCompoundAssignmentOp()) {   // clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign
+                        insertMutantSchemata(binOp, {clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign});
+                    } else if (binOp->isShiftAssignOp()) {      // clang::BO_ShlAssign, clang::BO_ShrAssign
+                        insertMutantSchemata(binOp, {clang::BO_ShlAssign, clang::BO_ShrAssign});
                     }
                 }
-            } else if (isa<CXXOperatorCallExpr>(s)) {
+            } else if (clang::isa<clang::CXXOperatorCallExpr>(s)) {
                 if (negateOverloadedOperators) {
-                    CXXOperatorCallExpr *oExpr = cast<CXXOperatorCallExpr>(s);
+                    clang::CXXOperatorCallExpr *oExpr = clang::cast<clang::CXXOperatorCallExpr>(s);
                     
-                    OverloadedOperatorKind oOp = oExpr->getOperator();
-                    if (oOp == OO_Plus) {
+                    clang::OverloadedOperatorKind oOp = oExpr->getOperator();
+                    if (oOp == clang::OO_Plus) {
                         printf("found CXXOperatorCallExpr expr of Addition in %s\n", oExpr->getStmtClassName());
                         //TODO check if this is really the place where the oOp is declared
-                        FunctionDecl *dDecl = oExpr->getDirectCallee();
+                        clang::FunctionDecl *dDecl = oExpr->getDirectCallee();
                         if (dDecl == nullptr) {
                             llvm::errs() << "Overloaded operator is not a functionDecl -> paradox";
                             exit(-1);
                         }
-                        FunctionDecl *def = dDecl->getDefinition();
+                        clang::FunctionDecl *def = dDecl->getDefinition();
                         if (def == nullptr) {
                             printf("definition is nullptr???\n");
                             exit(1);
@@ -294,7 +348,7 @@ public:
                             printf("overloaded operator is not an overloaded operator -> paradox");
                             exit(1);
                         }
-                        DeclContext *dCtx = def->getParent();
+                        clang::DeclContext *dCtx = def->getParent();
                         if (dCtx == NULL) {
                             printf("decl context is null :(\n");
                             exit(1);
@@ -305,7 +359,7 @@ public:
                         if (dCtx) {
                             printf("declCtx != null\n");
                             for (auto it = dCtx->decls_begin(); it != dCtx->decls_end(); ++it) {
-                                FunctionDecl *funcDecl = (*it)->getAsFunction();
+                                clang::FunctionDecl *funcDecl = (*it)->getAsFunction();
                                 if (funcDecl != NULL && funcDecl != def) {
                                     if (funcDecl->isOverloadedOperator()) {
                                         printf("its an overloaded operator!!! :O \n");
@@ -316,13 +370,13 @@ public:
                                 } else {
                                     printf("nope, it's not a funcDecl\n");
                                 }
-                                //                            Stmt *func = (*it)->getBody();
+                                //                            clang::Stmt *func = (*it)->getBody();
                                 //                            if (func) {
                                 //                                printf("exists\n");
                                 //                                func->dump();
                                 //                                func
-                                //                                if (isa<CXXOperatorCallExpr>(func)) {
-                                //                                    CXXOperatorCallExpr *oExprOther = cast<CXXOperatorCallExpr>(func);
+                                //                                if (clang::isa<CXXOperatorCallExpr>(func)) {
+                                //                                    CXXOperatorCallExpr *oExprOther = clang::cast<CXXOperatorCallExpr>(func);
                                 //                                    printf("it's also a operator\n");
                                 //                                    OverloadedOperatorKind oOpOther = oExprOther->getOperator();
                                 //                                    if (oOpOther == OO_Plus) {
@@ -348,167 +402,95 @@ public:
                 }
             }
         }
-        
         return true;
     }
 };
 
-// Implementation of the ASTConsumer interface for reading an AST produced
-// by the Clang parser.
-class MyASTConsumer : public ASTConsumer {
+
+
+class MutationConsumer : public clang::ASTConsumer {
 private:
-    MyASTVisitor Visitor;
+    MutatingVisitor *visitor;
     
 public:
-    MyASTConsumer(Rewriter &R, LangOptions &lo) : Visitor(R, lo) {}
+    // override in order to pass CI to custom visitor
+    explicit MutationConsumer(clang::CompilerInstance *CI): visitor(new MutatingVisitor(CI)) {}
     
-    // Override the method that gets called for each parsed top-level
-    // declaration.
-    virtual bool HandleTopLevelDecl(DeclGroupRef DR) {
-        for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b)
-            // Traverse the declaration using our AST visitor.
-            Visitor.TraverseDecl(*b);
-        return true;
+    // override to call our custom visitor on the entire source file
+    // Note we do this with TU as then the file is parsed, with TopLevelDecl, it's parsed whilst iterating
+    virtual void HandleTranslationUnit(clang::ASTContext &Context) {
+        // we can use ASTContext to get the TranslationUnitDecl, which is
+        // a single Decl that collectively represents the entire source file
+        visitor->TraverseDecl(Context.getTranslationUnitDecl());
+    }
+
+    
+//     // override to call our custom visitor on each top-level Decl
+//     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
+//     // a DeclGroupRef may have multiple Decls, so we iterate through each one
+//     for (clang::DeclGroupRef::iterator i = DG.begin(), e = DG.end(); i != e; i++) {
+//     clang::Decl *D = *i;
+//     visitor->TraverseDecl(D); // recursively visit each AST node in Decl "D"
+//     }
+//     return true;
+//     }
+    
+};
+
+
+class MutationFrontendAction : public clang::ASTFrontendAction {
+public:
+    virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &CI, StringRef file) {
+        // TODO: find out why this is being called multiple times per sourceFile we provide
+        llvm::errs() << "Starting to mutate the following file and all of it's includes: " << file << "\n";
+        return std::unique_ptr<clang::ASTConsumer> (new MutationConsumer(&CI)); // pass CI pointer to ASTConsumer
+    }
+    
+    virtual void EndSourceFileAction() {
+        // use false, as inPlace causes a sementation fault in clang's sourcemaneger calling the ComputeLineNumbers function
+        writeChangedFiles(false);
+        // TODO: not sure if the next line is needed
+        // clang::ASTFrontendAction::EndSourceFileAction();
     }
 };
 
 
+// Apply a custom category to all command-line options so that they are the only ones displayed.
+static llvm::cl::OptionCategory MutantShemataCategory("mutation-schemata options");
 
-void setupClang(char* allFiles, char* includeDir, char* workingDir) {
-    // CompilerInstance will hold the instance of the Clang compiler for us,
-    // managing the various objects needed to run the compiler.
+
+/**
+ * Expecting: argv: -p ../googletest/build filePathToMutate1 filePathToMutate2 ...
+ */
+void setupClang(int argc, const char **argv) {
+    // parse the command-line args passed to your code
+    clang::tooling::CommonOptionsParser op(argc, argv, MutantShemataCategory);
     
-    std::string buf;                // Have a buffer string
-    std::stringstream ss(allFiles); // Insert the string into a stream
-    
-    std::vector<std::string> tokens; // Create vector to hold our words
-    while(getline(ss, buf, ',')) {
-        tokens.push_back(buf);
+    // store all paths to mutate, but fix to absolute path
+    for (std::string item: op.getSourcePathList()) {
+        SourcePaths.push_back(clang::tooling::getAbsolutePath(item));
     }
     
-    for (std::string file: tokens) {
-        std::unique_ptr<CompilerInstance> TheCompInst(new CompilerInstance());
-        TheCompInst->createDiagnostics();
-        
-        
-        LangOptions &lo = TheCompInst->getLangOpts();
-        lo.CPlusPlus = 1;
-        
-        // Initialize target info with the default triple for our platform.
-        auto TO = std::make_shared<TargetOptions>();
-        TO->Triple = llvm::sys::getDefaultTargetTriple();
-        TargetInfo *TI =
-        TargetInfo::CreateTargetInfo(TheCompInst->getDiagnostics(), TO);
-        TheCompInst->setTarget(TI);
-        
-        TheCompInst->createFileManager();
-        FileManager &FileMgr = TheCompInst->getFileManager();
-        TheCompInst->createSourceManager(FileMgr);
-        SourceManager &SourceMgr = TheCompInst->getSourceManager();
-        
-        // -- WORK IN PROGRESS ---
-        // Header searcher
-        std::shared_ptr<HeaderSearchOptions> hso = TheCompInst->getHeaderSearchOptsPtr();
-        hso->AddPath(includeDir, frontend::Quoted, false, false);
-        HeaderSearch hs(hso, SourceMgr, TheCompInst->getDiagnostics(), lo, TI);
-        // this doe not seem to set everything correctly
-        std::vector<DirectoryLookup> lookups;
-        for (auto entry : hso->UserEntries) {
-            printf("path := %s\n", entry.Path.c_str());
-            auto lookup = DirectoryLookup(FileMgr.getDirectory(entry.Path), SrcMgr::CharacteristicKind::C_System, false);
-            if (!lookup.getDir()) {
-                printf("Clang could not interpret path %s\n", entry.Path.c_str());
-                //throw //SpecificError<ClangCouldNotInterpretPath>(a, where, "Clang could not interpret path " + entry.Path);
-            }
-            lookups.push_back(lookup);
-        }
-        hs.SetSearchPaths(lookups, 0, 0, true);
-        
-        // set working directory
-        printf("WorkingDir:= %s\n", TheCompInst->getFileSystemOpts().WorkingDir.c_str());
-        TheCompInst->getFileSystemOpts().WorkingDir = workingDir;
-
-        // -----------------------
-
-        
-        
-        TheCompInst->createPreprocessor(TU_Module);
-        TheCompInst->createASTContext();
-        
-        // A Rewriter helps us manage the code rewriting task.
-        Rewriter TheRewriter;
-        TheRewriter.setSourceMgr(SourceMgr, TheCompInst->getLangOpts());
-        
-        printf("file: %s\n", file.c_str());
-        // Set the main file handled by the source manager to the input file.
-        const FileEntry *FileIn = FileMgr.getFile(file);
-        SourceMgr.setMainFileID(
-                                SourceMgr.createFileID(FileIn, SourceLocation(), SrcMgr::C_User));
-        TheCompInst->getDiagnosticClient().BeginSourceFile(
-                                                           TheCompInst->getLangOpts(), &TheCompInst->getPreprocessor());
-        
-        // Create an AST consumer instance which is going to get called by
-        // ParseAST.
-        MyASTConsumer TheConsumer(TheRewriter, lo);
-        // Parse the file to AST, registering our consumer as the AST consumer.
-        ParseAST(TheCompInst->getPreprocessor(), &TheConsumer,
-                 TheCompInst->getASTContext());
-        // At this point the rewriter's buffer should be full with the rewritten
-        // file contents.
-        //const RewriteBuffer *RewriteBuf =
-        //TheRewriter.getRewriteBufferFor(SourceMgr.getMainFileID());
-        //TheRewriter.overwriteChangedFiles();
-        
-        bool AllWritten = true;
-        for (std::map<FileID, RewriteBuffer>::iterator I = TheRewriter.buffer_begin(), E = TheRewriter.buffer_end(); I != E; ++I) {
-            printf("you know:\n");
-            const char *include = "extern int MUTANT_NR;\n";
-            int i = 0;
-            bool alreadyIncluded = true;
-            for (RewriteBuffer::iterator it = I->second.begin(), end = I->second.end(); it != end; ++it) {
-                printf("%c", *it);
-                if (*it == '\n') {
-                    break;
-                }
-                if (include[i++] != *it) {
-                    alreadyIncluded = false;
-                    break;
-                }
-            }
-            printf("I do now, and %i\n", alreadyIncluded);
-            if (!alreadyIncluded) {
-                printf("including it\n");
-                I->second.InsertTextAfter(0, include);
-            }
-            TheRewriter.overwriteChangedFiles();
-            printf("WorkingDir:= %s\n", TheCompInst->getFileSystemOpts().WorkingDir.c_str());
-
-            
-            //            printf("filename: %s\n", SourceMgr.getFileEntryForID(I->first)->getName());
-            
-            //            const FileEntry *Entry = SourceMgr.getFileEntryForID(I->first);
-            //            Entry->getName
-            //            AtomicallyMovedFile File(SourceMgr.getDiagnostics(), Entry->getName(), AllWritten);
-            //            if (File.ok()) {
-            //                I->second.write(File.getStream());
-            //            }
-        }
-        //        printf("done\n");
-        
-    }
+    // create a new Clang Tool instance (a LibTooling environment)
+    clang::tooling::ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     
+    // run the Clang Tool, creating a new FrontendAction
+    int result = Tool.run(clang::tooling::newFrontendActionFactory<MutationFrontendAction>().get());
     
-}
-
-int old_main(int argc, char *argv[]) {
-    if (argc != 4) {
-        llvm::errs() << "Usage: rewritersample <file,otherfile,...> includeDir workingDir\n";
-        return 1;
-    }
+    /*
+     * move newly created files onto the old files
+     * Caling rewriter.overwriteChangedFiles() here causes a segmentation fault
+     * as some rewrite buffers are already deconstructed.
+     * Calling it in the EndSourceFileAction causes a sementation fault
+     * in clang's sourcemaneger calling the ComputeLineNumbers function.
+     * This is why we need to use temp files.
+     */
+    overWriteChangedFile();
+    llvm::errs() << "\nMutations found: " << mutant_count - 1 << "\n";
     
-    setupClang(argv[1], argv[2], argv[3]);
-    
-    return mutant_count;
+    return result;
 }
 
 #endif // MS_CLANG_REWRITE
+
+
