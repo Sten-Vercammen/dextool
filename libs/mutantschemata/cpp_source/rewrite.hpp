@@ -1,12 +1,3 @@
-//
-//  main.cpp
-//  libtooling
-//
-//  Created by Sten Vercammen on 23/07/2019.
-//  Copyright © 2019 Sten Vercammen. All rights reserved.
-//
-
-
 //------------------------------------------------------------------------------
 // Mutant schemata using Clang rewriter and RecursiveASTVisitor
 //
@@ -43,6 +34,11 @@ bool negateBinaryOperators = true;
 bool negateOverloadedOperators = false;
 bool negateUnaryOperators = false;
 
+// preventig duplicate writung of already analysed files
+// TODO optimisations should be possible
+std::string processingFile;
+bool written = false;
+
 
 /**
  * Write the modified AST to files.
@@ -66,45 +62,42 @@ void writeChangedFiles(bool inPlace) {
             const clang::FileEntry *file = rewriter.getSourceMgr().getFileEntryForID(I->first);
             if (file) {
                 if (file->isValid()) {
-                    // some files faile with std::malloc error as it's path size is 9*10^18 -> bad pointer?
-                    if (!file->tryGetRealPathName().empty() && file->tryGetRealPathName().size() < 1000000) {
-                        bool isSourceFile = false;
-                        // check if the edited file is one we wanted to mutate
-                        // (technically we are only changing files in SourcePaths, but somehow other files still show up in the editbuffer)
-                        for (std::string item: SourcePaths) {
-                            // are sourceFile and bufferFile equivalent (same path, takes into account different relative paths)
-                            if (llvm::sys::fs::equivalent(item, file->tryGetRealPathName())) {
-                                isSourceFile = true;
-                                break;
-                            }
+                    bool isSourceFile = false;
+                    // check if the edited file is one we wanted to mutate
+                    // (technically we are only changing files in SourcePaths, but somehow other files still show up in the editbuffer)
+                    for (std::string item: SourcePaths) {
+                        // are sourceFile and bufferFile equivalent (same path, takes into account different relative paths)
+                        if (llvm::sys::fs::equivalent(item, file->tryGetRealPathName())) {
+                            isSourceFile = true;
+                            break;
                         }
-
-                        if (isSourceFile) {
-                            /*
-                             * Mark changed file as visited, so we don't mutate it again later.
-                             * Needed as inserted mutants are new, unvisited nodes in the AST,
-                             * and we don't want to mutate them.
-                             */
-                            std::set<std::string>::iterator it = VisitedSourcePaths.find(file->tryGetRealPathName());
-                            if (it == VisitedSourcePaths.end()) {
-                                VisitedSourcePaths.insert(file->tryGetRealPathName());
-
-				// include to define identifier
-				// note: main file should contain the actual declaration (without extern)
-				const char *include = "extern int MUTANT_NR;\n";
-				I->second.InsertTextAfter(0, include);
-                                
-                                // write what's in the buffer to a temporary file
-                                // placed here to prevent writing the mutated file multiple times
-                                std::error_code error_code;
-                                std::string fileName = file->getName().str() + "_mutated";
-                                llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
-                                outFile << std::string(I->second.begin(), I->second.end());
-                                outFile.close();
-                                
-                                // debug output
-                                llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
-                            }
+                    }
+                    
+                    if (isSourceFile) {
+                        /*
+                         * Mark changed file as visited, so we don't mutate it again later.
+                         * Needed as inserted mutants are new, unvisited nodes in the AST,
+                         * and we don't want to mutate them.
+                         */
+                        std::set<std::string>::iterator it = VisitedSourcePaths.find(file->tryGetRealPathName());
+                        if (it == VisitedSourcePaths.end()) {
+                            VisitedSourcePaths.insert(file->tryGetRealPathName());
+                            
+                            // include to define identifier
+                            // note: main file should contain the actual declaration (without extern)
+                            const char *include = "extern int MUTANT_NR;\n";
+                            I->second.InsertTextAfter(0, include);
+			    
+                            // write what's in the buffer to a temporary file
+                            // placed here to prevent writing the mutated file multiple times
+                            std::error_code error_code;
+                            std::string fileName = file->getName().str() + "_mutated";
+                            llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
+                            outFile << std::string(I->second.begin(), I->second.end());
+                            outFile.close();
+                            
+                            // debug output
+                            llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
                         }
                     }
                 }
@@ -168,7 +161,7 @@ private:
      * (if it's a sourceFile and we haven't yet visited it)
      */
     bool isfileToMutate(clang::FullSourceLoc FullLocation) {
-        const clang::FileEntry *fE = SourceManager->getFileEntryForID(FullLocation.getFileID());
+        const clang::FileEntry *fE = SourceManager->getFileEntryForID(SourceManager->getFileID(FullLocation));
         if (fE) {
             for (std::string item: SourcePaths) {
                 if (llvm::sys::fs::equivalent(item, fE->tryGetRealPathName())) {
@@ -183,7 +176,6 @@ private:
 public:
     explicit MutatingVisitor(clang::CompilerInstance *CI): astContext(&(CI->getASTContext())), pp(astContext->getLangOpts()) {
         SourceManager = &astContext->getSourceManager();
-        rewriter.setSourceMgr(astContext->getSourceManager(), astContext->getLangOpts());
     }
     
     virtual bool VisitStmt(clang::Stmt *s) {
@@ -428,34 +420,47 @@ public:
         // a single Decl that collectively represents the entire source file
         visitor->TraverseDecl(Context.getTranslationUnitDecl());
     }
-
     
-//     // override to call our custom visitor on each top-level Decl
-//     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
-//     // a DeclGroupRef may have multiple Decls, so we iterate through each one
-//     for (clang::DeclGroupRef::iterator i = DG.begin(), e = DG.end(); i != e; i++) {
-//     clang::Decl *D = *i;
-//     visitor->TraverseDecl(D); // recursively visit each AST node in Decl "D"
-//     }
-//     return true;
-//     }
+    
+    //     // override to call our custom visitor on each top-level Decl
+    //     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
+    //     // a DeclGroupRef may have multiple Decls, so we iterate through each one
+    //     for (clang::DeclGroupRef::iterator i = DG.begin(), e = DG.end(); i != e; i++) {
+    //     clang::Decl *D = *i;
+    //     visitor->TraverseDecl(D); // recursively visit each AST node in Decl "D"
+    //     }
+    //     return true;
+    //     }
     
 };
 
 
 class MutationFrontendAction : public clang::ASTFrontendAction {
+private:
 public:
     virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &CI, StringRef file) {
+        if (processingFile != getCurrentInput().getFile()) {
+            written = false;
+            processingFile = getCurrentInput().getFile();
+        }
+        
         // TODO: find out why this is being called multiple times per sourceFile we provide
+        // it's visiting all stmt's 6 times... there is a huge speedup to be gained
         llvm::errs() << "Starting to mutate the following file and all of it's includes: " << file << "\n";
+        rewriter = clang::Rewriter();
+        rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         return std::unique_ptr<clang::ASTConsumer> (new MutationConsumer(&CI)); // pass CI pointer to ASTConsumer
     }
     
     virtual void EndSourceFileAction() {
-        // use false, as inPlace causes a sementation fault in clang's sourcemaneger calling the ComputeLineNumbers function
-        writeChangedFiles(false);
-        // TODO: not sure if the next line is needed
-        // clang::ASTFrontendAction::EndSourceFileAction();
+        // another ugly hack to prevent sehmentation faults
+        if (!written) {
+            // use false, as inPlace causes a sementation fault in clang's sourcemaneger calling the ComputeLineNumbers function
+            writeChangedFiles(false);
+            written = true;
+        } else {
+            // llvm::errs() << "Already written files for: " << getCurrentInput().getFile() << "\n";
+        }
     }
 };
 
@@ -475,7 +480,7 @@ void setupClang(int argc, const char **argv) {
     for (std::string item: op.getSourcePathList()) {
         SourcePaths.push_back(clang::tooling::getAbsolutePath(item));
     }
-    
+
     // create a new Clang Tool instance (a LibTooling environment)
     clang::tooling::ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     
