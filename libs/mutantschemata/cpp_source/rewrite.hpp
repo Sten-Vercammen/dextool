@@ -109,6 +109,47 @@ void writeChangedFiles(bool inPlace) {
 }
 
 /**
+ * funciton that adds definition of MUTANT_NR to main file,
+ * or removes the extern keyword if the file was mutated.
+ */
+void fixMainFile(std::string pathToMainFile) {
+    const char *possible_include = "extern int MUTANT_NR;";
+    const char *fix_include = "      "; // only override the extern keyword with spaces, this prevents us from needing to copy and write the complete file
+    
+    std::fstream ifs;
+    ifs.open(pathToMainFile, std::ios::in | std::ios::out);
+    
+    // check if the file is open
+    if (ifs) {
+        std::string line;
+        if (getline(ifs, line)) {
+            // point back to the beginning of the file
+            ifs.seekp(0);
+
+            // if first line is equal
+            if (strcmp(possible_include, line.c_str()) == 0) {
+                // override extern keword with spaces
+                ifs << fix_include;
+            } else { // file didn't contain our MUTANT_NR include
+                // store entire file in buffer
+                std::stringstream buffer;
+                buffer << ifs.rdbuf();
+                // point back to the beginning of the file
+                ifs.seekp(0);
+                // write the MUTANT_NR;
+                ifs << "       int MUTANT_NR;\n";
+                // write our buffer
+                ifs << buffer.str();
+            }
+        }
+    } else {
+         llvm::errs() << "unable to open main file\n";
+    }
+    ifs.close();
+}
+
+
+/**
  * write the temporary files over the original ones
  */
 void overWriteChangedFile() {
