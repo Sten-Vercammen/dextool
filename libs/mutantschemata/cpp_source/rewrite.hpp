@@ -7,6 +7,7 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include <fstream>
 
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTContext.h"
@@ -72,7 +73,7 @@ void writeChangedFiles(bool inPlace) {
                             break;
                         }
                     }
-                    
+
                     if (isSourceFile) {
                         /*
                          * Mark changed file as visited, so we don't mutate it again later.
@@ -82,12 +83,12 @@ void writeChangedFiles(bool inPlace) {
                         std::set<std::string>::iterator it = VisitedSourcePaths.find(file->tryGetRealPathName());
                         if (it == VisitedSourcePaths.end()) {
                             VisitedSourcePaths.insert(file->tryGetRealPathName());
-                            
+
                             // include to define identifier
                             // note: main file should contain the actual declaration (without extern)
                             const char *include = "extern int MUTANT_NR;\n";
                             I->second.InsertTextAfter(0, include);
-			    
+
                             // write what's in the buffer to a temporary file
                             // placed here to prevent writing the mutated file multiple times
                             std::error_code error_code;
@@ -95,7 +96,7 @@ void writeChangedFiles(bool inPlace) {
                             llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
                             outFile << std::string(I->second.begin(), I->second.end());
                             outFile.close();
-                            
+
                             // debug output
                             llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
                         }
@@ -115,10 +116,10 @@ void writeChangedFiles(bool inPlace) {
 void fixMainFile(std::string pathToMainFile) {
     const char *possible_include = "extern int MUTANT_NR;";
     const char *fix_include = "      "; // only override the extern keyword with spaces, this prevents us from needing to copy and write the complete file
-    
+
     std::fstream ifs;
     ifs.open(pathToMainFile, std::ios::in | std::ios::out);
-    
+
     // check if the file is open
     if (ifs) {
         std::string line;
@@ -167,20 +168,20 @@ private:
     clang::ASTContext *astContext;
     clang::PrintingPolicy pp;
     clang::SourceManager *SourceManager;
-    
+
     void insertMutantSchemata(clang::BinaryOperator *binOp, std::initializer_list<clang::BinaryOperatorKind> list) {
         // get lhs of expression
         std::string lhs;
         llvm::raw_string_ostream lhs_expr_stream(lhs);
         binOp->getLHS()->printPretty(lhs_expr_stream, nullptr, pp);
         lhs_expr_stream.flush();
-        
+
         // get rhs of expression
         std::string rhs;
         llvm::raw_string_ostream rhs_expr_stream(rhs);
         binOp->getRHS()->printPretty(rhs_expr_stream, nullptr, pp);
         rhs_expr_stream.flush();
-        
+
         // get expression with mutant schemata
         std::stringstream newExprStr;
         std::string endBrackets;
@@ -190,13 +191,13 @@ private:
                 endBrackets += ")";
             }
         }
-        
+
         // insert mutant before orig expression
         rewriter.InsertText(binOp->getLocStart(), newExprStr.str());
         // insert brackets to close mutant schemata's if statement
         rewriter.InsertTextAfterToken(binOp->getLocEnd(), endBrackets);
     }
-    
+
     /**
      * Check if we want to mutate this file.
      * (if it's a sourceFile and we haven't yet visited it)
@@ -212,19 +213,19 @@ private:
         }
         return false;
     }
-    
-    
+
+
 public:
     explicit MutatingVisitor(clang::CompilerInstance *CI): astContext(&(CI->getASTContext())), pp(astContext->getLangOpts()) {
         SourceManager = &astContext->getSourceManager();
     }
-    
+
     virtual bool VisitStmt(clang::Stmt *s) {
         clang::FullSourceLoc FullLocation = astContext->getFullLoc(s->getLocStart());
         if (!isfileToMutate(FullLocation)) {
             return true;
         }
-        
+
         // mutate all expressions
         if (clang::isa<clang::Expr>(s)) {
             if (clang::isa<clang::BinaryOperator>(s)) {
@@ -337,8 +338,8 @@ public:
                     //TODO
                 } else if (false) {
                     if (binOp->isPtrMemOp()) {
-                        
-                        
+
+
                     } else if (binOp->isMultiplicativeOp()) {   // clang::BO_Mul, clang::BO_Div, clang::BO_Rem
                         insertMutantSchemata(binOp, {clang::BO_Mul, clang::BO_Div, clang::BO_Rem});
                     } else if (binOp->isAdditiveOp()) {         // clang::BO_Add, clang::BO_Sub
@@ -366,7 +367,7 @@ public:
             } else if (clang::isa<clang::CXXOperatorCallExpr>(s)) {
                 if (negateOverloadedOperators) {
                     clang::CXXOperatorCallExpr *oExpr = clang::cast<clang::CXXOperatorCallExpr>(s);
-                    
+
                     clang::OverloadedOperatorKind oOp = oExpr->getOperator();
                     if (oOp == clang::OO_Plus) {
                         printf("found CXXOperatorCallExpr expr of Addition in %s\n", oExpr->getStmtClassName());
@@ -427,8 +428,8 @@ public:
                             printf("declCtx == null\n");
                         }
                         //                    DeclContext *declCtx = decl->getDeclContext();   // semantical context (not lexical)
-                        
-                        
+
+
                         // TODO check this in a better way, we must find the symbol table
                         // as an operator does not have to be overloaded in the same file
                         // or in the class intself
@@ -449,11 +450,11 @@ public:
 class MutationConsumer : public clang::ASTConsumer {
 private:
     MutatingVisitor *visitor;
-    
+
 public:
     // override in order to pass CI to custom visitor
     explicit MutationConsumer(clang::CompilerInstance *CI): visitor(new MutatingVisitor(CI)) {}
-    
+
     // override to call our custom visitor on the entire source file
     // Note we do this with TU as then the file is parsed, with TopLevelDecl, it's parsed whilst iterating
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
@@ -461,8 +462,8 @@ public:
         // a single Decl that collectively represents the entire source file
         visitor->TraverseDecl(Context.getTranslationUnitDecl());
     }
-    
-    
+
+
     //     // override to call our custom visitor on each top-level Decl
     //     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
     //     // a DeclGroupRef may have multiple Decls, so we iterate through each one
@@ -472,7 +473,7 @@ public:
     //     }
     //     return true;
     //     }
-    
+
 };
 
 
@@ -484,7 +485,7 @@ public:
             written = false;
             processingFile = getCurrentInput().getFile();
         }
-        
+
         // TODO: find out why this is being called multiple times per sourceFile we provide
         // it's visiting all stmt's 6 times... there is a huge speedup to be gained
         llvm::errs() << "Starting to mutate the following file and all of it's includes: " << file << "\n";
@@ -492,7 +493,7 @@ public:
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         return std::unique_ptr<clang::ASTConsumer> (new MutationConsumer(&CI)); // pass CI pointer to ASTConsumer
     }
-    
+
     virtual void EndSourceFileAction() {
         // another ugly hack to prevent sehmentation faults
         if (!written) {
@@ -516,7 +517,7 @@ static llvm::cl::OptionCategory MutantShemataCategory("mutation-schemata options
 void setupClang(int argc, const char **argv) {
     // parse the command-line args passed to your code
     clang::tooling::CommonOptionsParser op(argc, argv, MutantShemataCategory);
-    
+
     // store all paths to mutate, but fix to absolute path
     for (std::string item: op.getSourcePathList()) {
         SourcePaths.push_back(clang::tooling::getAbsolutePath(item));
@@ -524,10 +525,10 @@ void setupClang(int argc, const char **argv) {
 
     // create a new Clang Tool instance (a LibTooling environment)
     clang::tooling::ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    
+
     // run the Clang Tool, creating a new FrontendAction
     int result = Tool.run(clang::tooling::newFrontendActionFactory<MutationFrontendAction>().get());
-    
+
     /*
      * move newly created files onto the old files
      * Caling rewriter.overwriteChangedFiles() here causes a segmentation fault
@@ -538,10 +539,8 @@ void setupClang(int argc, const char **argv) {
      */
     overWriteChangedFile();
     llvm::errs() << "\nMutations found: " << mutant_count - 1 << "\n";
-    
+
 //    return result;
 }
 
 #endif // MS_CLANG_REWRITE
-
-

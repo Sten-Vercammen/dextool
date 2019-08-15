@@ -26,7 +26,7 @@ set(flags "-I${CMAKE_SOURCE_DIR}/libs/cpptooling/source
 -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src
 -I${CMAKE_SOURCE_DIR}/vendor/miniorm/source
 -I${CMAKE_SOURCE_DIR}/vendor/blob_model/source
--I${CMAKE_SOURCE_DIR}/libs/mutantschemata/source")")
+-I${CMAKE_SOURCE_DIR}/libs/mutantschemata/source")
 
 build_d_executable(
     ${EXE_NAME}
