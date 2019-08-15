@@ -13,7 +13,7 @@ import logger = std.experimental.logger;
 import std.datetime : Clock, dur;
 import std.format : format;
 
-import arsd.dom : Document, Element, require, Table;
+import arsd.dom : Document, Element, require, Table, RawSource;
 
 import dextool.plugin.mutate.backend.database : Database;
 import dextool.plugin.mutate.backend.report.html.constants;
@@ -22,6 +22,7 @@ import dextool.plugin.mutate.backend.report.utility;
 import dextool.plugin.mutate.backend.type : Mutation;
 import dextool.plugin.mutate.config : ConfigReport;
 import dextool.plugin.mutate.type : MutationKind;
+import dextool.plugin.mutate.backend.report.html.js;
 
 string makeStats(ref Database db, ref const ConfigReport conf,
         const(MutationKind)[] humanReadableKinds, const(Mutation.Kind)[] kinds) @trusted {
@@ -31,8 +32,12 @@ string makeStats(ref Database db, ref const ConfigReport conf,
     auto sections = setFromList(conf.reportSection);
 
     auto doc = tmplBasicPage;
-    doc.title(format("Mutation Testing Report %(%s %) %s", humanReadableKinds, Clock.currTime));
 
+    auto s = doc.root.childElements("head")[0].addChild("script");
+    s.addChild(new RawSource(doc, js_similarity));
+
+    doc.title(format("Mutation Testing Report %(%s %) %s", humanReadableKinds, Clock.currTime));
+    doc.mainBody.setAttribute("onload", "init()");
     overallStat(reportStatistics(db, kinds), doc.mainBody);
     if (ReportSection.tc_killed_no_mutants in sections)
         deadTestCase(reportDeadTestCases(db), doc.mainBody);
@@ -49,19 +54,38 @@ void overallStat(const MutationStat s, Element n) {
     import std.conv : to;
     import std.typecons : tuple;
 
-    n.addChild("h2", "Summary");
-    n.addChild("p").appendHtml(format("Mutation Score <b>%.3s</b>", s.score));
-    n.addChild("p", format("Execution time %s", s.totalTime));
+    n.addChild("p",
+            "The tables are hidden by default, click on the corresponding header to display a table.");
+    with (n.addChild("button", "expand all")) {
+        setAttribute("type", "button");
+        setAttribute("id", "expand_all");
+    }
+    with (n.addChild("button", "collapse all")) {
+        setAttribute("type", "button");
+        setAttribute("id", "collapse_all");
+    }
 
+    auto comp_container = n.addChild("div").addClass("comp_container");
+    auto heading = comp_container.addChild("h2").addClass("tbl_header");
+
+    comp_container.addChild("p").appendHtml(format("Mutation Score <b>%.3s</b>", s.score));
+    comp_container.addChild("p", format("Execution time %s", s.totalTime));
+    heading.addChild("i").addClass("right");
+    heading.appendText(" Summary");
     if (s.untested > 0 && s.predictedDone > 0.dur!"msecs") {
-        n.addChild("p", format("Predicted time until mutation testing is done %s (%s)",
+        comp_container.addChild("p", format("Predicted time until mutation testing is done %s (%s)",
                 s.predictedDone, Clock.currTime + s.predictedDone));
     }
 
-    auto tbl = tmplDefaultTable(n, ["Type", "Value"]);
-    foreach (const d; [tuple("Alive", s.alive), tuple("Killed", s.killed),
-            tuple("Timeout", s.timeout), tuple("Total", s.total), tuple("Untested",
-                s.untested), tuple("Killed by compiler", s.killedByCompiler),]) {
+    auto tbl_container = comp_container.addChild("div").addClass("tbl_container");
+    tbl_container.setAttribute("style", "display: none;");
+    auto tbl = tmplDefaultTable(tbl_container, ["Type", "Value"]);
+    foreach (const d; [
+            tuple("Alive", s.alive), tuple("Killed", s.killed),
+            tuple("Timeout", s.timeout), tuple("Total", s.total),
+            tuple("Untested", s.untested),
+            tuple("Killed by compiler", s.killedByCompiler),
+        ]) {
         tbl.appendRow(d[0], d[1]);
     }
 
@@ -69,7 +93,8 @@ void overallStat(const MutationStat s, Element n) {
         tbl.appendRow("NoMut", s.aliveNoMut.to!string);
         tbl.appendRow("NoMut/total", s.suppressedOfTotal.to!string);
 
-        auto p = n.addChild("p", "NoMut is the number of mutants that are alive but ignored.");
+        auto p = comp_container.addChild("p",
+                "NoMut is the number of mutants that are alive but ignored.");
         p.appendHtml(" They are <i>suppressed</i>.");
         p.appendText(" This result in those mutants increasing the mutation score.");
         p.appendText(" The suppressed/total is how much it has increased.");
@@ -80,13 +105,18 @@ void overallStat(const MutationStat s, Element n) {
 void deadTestCase(const TestCaseDeadStat s, Element n) {
     if (s.numDeadTC == 0)
         return;
+    auto comp_container = n.addChild("div").addClass("comp_container");
+    auto heading = comp_container.addChild("h2").addClass("tbl_header");
+    heading.addChild("i").addClass("right");
+    heading.appendText(" Dead Test Cases");
 
-    n.addChild("h2", "Dead Test Cases");
-    n.addChild("p", "These test case have killed zero mutants. There is a high probability that these contain implementation errors. They should be manually inspected.");
+    comp_container.addChild("p", "These test case have killed zero mutants. There is a high probability that these contain implementation errors. They should be manually inspected.");
 
-    n.addChild("p", format("%s/%s = %s of all test cases", s.numDeadTC, s.total, s.ratio));
-
-    auto tbl = tmplDefaultTable(n, ["Test Case"]);
+    comp_container.addChild("p", format("%s/%s = %s of all test cases",
+            s.numDeadTC, s.total, s.ratio));
+    auto tbl_container = comp_container.addChild("div").addClass("tbl_container");
+    tbl_container.setAttribute("style", "display: none;");
+    auto tbl = tmplDefaultTable(tbl_container, ["Test Case"]);
     foreach (tc; s.testCases) {
         tbl.appendRow(tc.name);
     }
@@ -100,13 +130,21 @@ void overlapTestCase(const TestCaseOverlapStat s, Element n) {
 
     if (s.total == 0)
         return;
+    auto comp_container = n.addChild("div").addClass("comp_container");
+    auto heading = comp_container.addChild("h2").addClass("tbl_header");
+    heading.addChild("i").addClass("right");
+    heading.appendText(" Overlapping Test Cases");
 
-    n.addChild("h2", "Overlapping Test Cases");
-    n.addChild("p", "These test has killed exactly the same mutants. This is an indication that they verify the same aspects. This can mean that some of them may be redundant.");
+    comp_container.addChild("p", "These test has killed exactly the same mutants. This is an indication that they verify the same aspects. This can mean that some of them may be redundant.");
 
-    n.addChild("p", s.sumToString);
+    comp_container.addChild("p", s.sumToString);
 
-    auto tbl = tmplDefaultTable(n, ["Test Case", "Count", "Mutation IDs"]);
+    auto tbl_container = comp_container.addChild("div").addClass("tbl_container");
+
+    tbl_container.setAttribute("style", "display: none;");
+    auto tbl = tmplDefaultTable(tbl_container, [
+            "Test Case", "Count", "Mutation IDs"
+            ]);
 
     foreach (tcs; s.tc_mut.byKeyValue.filter!(a => a.value.length > 1).enumerate) {
         bool first = true;

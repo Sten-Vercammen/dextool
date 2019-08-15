@@ -144,12 +144,15 @@ struct FileIndex {
     }
 
     override void endFileEvent(ref Database db) @trusted {
-        import std.algorithm : max, each, map, min, canFind;
+        import std.algorithm : max, each, map, min, canFind, sort;
         import std.array : appender;
         import std.conv : to;
-        import std.range : repeat;
+        import std.range : repeat, enumerate;
         import std.traits : EnumMembers;
+        import dextool.plugin.mutate.type : MutationKind;
         import dextool.plugin.mutate.backend.database.type : MutantMetaData;
+        import dextool.plugin.mutate.backend.report.utility : window;
+        import dextool.plugin.mutate.backend.mutation_type : toUser;
 
         static struct MData {
             MutationId id;
@@ -160,7 +163,7 @@ struct FileIndex {
 
         static string styleHover(MutationId this_mut, const(FileMutant) m) {
             if (this_mut == m.id)
-                return format(`<b class="%s">%s</b>`, pickColor(m).toHover, m.mut.kind);
+                return format(`<b class="%s"><u>%s</u></b>`, pickColor(m).toHover, m.mut.kind);
             return format(`<span class="%s">%s</span>`, pickColor(m).toHover, m.mut.kind);
         }
 
@@ -176,6 +179,11 @@ struct FileIndex {
         line.addClass("loc");
 
         line.addChild("span", "1:").addClass("line_nr");
+        auto mut_data = "var g_muts_data = {};\n";
+        mut_data ~= "g_muts_data[-1] = {'kind' : null, 'status' : null, 'testCases' : null, 'orgText' : null, 'mutText' : null, 'meta' : null};\n";
+        alias sort_tcs_on_kills = (a, b) => db.getTestCaseInfo(a, kinds)
+            .killedMutants < db.getTestCaseInfo(b, kinds).killedMutants;
+
         foreach (const s; ctx.span.toRange) {
             if (s.tok.loc.line > lastLoc.line) {
                 lastLoc.column = 1;
@@ -190,7 +198,6 @@ struct FileIndex {
                     addClass("loc");
                     addChild("span", format("%s:", lastLoc.line + i + 1)).addClass("line_nr");
                 }
-
             }
             const spaces = max(0, s.tok.loc.column - lastLoc.column);
             line.addChild(new RawSource(ctx.doc, format("%-(%s%)", "&nbsp;".repeat(spaces))));
@@ -205,48 +212,64 @@ struct FileIndex {
                 if (meta.onClick.length != 0)
                     setAttribute("onclick", meta.onClick);
             }
+
             foreach (m; s.muts) {
                 if (!ids.contains(m.id)) {
                     ids.add(m.id);
                     muts.put(MData(m.id, m.txt, m.mut, db.getMutantationMetaData(m.id)));
-                    const inside_fly = format(`%-(%s %)`, s.muts.map!(a => styleHover(m.id, a)))
-                        .toJson;
-                    const fly = format(`fly(event, %s)`, inside_fly);
                     with (d0.addChild("span", m.mutation)) {
                         addClass("mutant");
                         addClass(s.tok.toName);
                         setAttribute("id", m.id.to!string);
-                        setAttribute("onmouseenter", fly);
-                        setAttribute("onmouseleave", fly);
                     }
                     d0.addChild("a").setAttribute("href", "#" ~ m.id.to!string);
+                    auto testCases = db.getTestCases(m.id);
+                    testCases.sort!(sort_tcs_on_kills);
+                    if (testCases.length) {
+                        mut_data ~= format("g_muts_data[%s] = {'kind' : %s, 'kindGroup' : %s, 'status' : %s, 'testCases' : [%('%s',%)'], 'orgText' : '%s', 'mutText' : '%s', 'meta' : '%s'};\n",
+                                m.id, m.mut.kind.to!int, toUser(m.mut.kind)
+                                .to!int, m.mut.status.to!ubyte, testCases,
+                                window(m.txt.original), window(m.txt.mutation),
+                                db.getMutantationMetaData(m.id).kindToString);
+                    } else {
+                        mut_data ~= format("g_muts_data[%s] = {'kind' : %s, 'kindGroup' : %s, 'status' : %s, 'testCases' : null, 'orgText' : '%s', 'mutText' : '%s', 'meta' : '%s'};\n",
+                                m.id, m.mut.kind.to!int, toUser(m.mut.kind)
+                                .to!int, m.mut.status.to!ubyte, window(m.txt.original),
+                                window(m.txt.mutation),
+                                db.getMutantationMetaData(m.id).kindToString);
+                    }
                 }
             }
-
             lastLoc = s.tok.locEnd;
         }
         with (root.addChild("script")) {
-            import dextool.plugin.mutate.backend.report.utility : window;
-
             // force a newline in the generated html to improve readability
             appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_mutids = [%(%s,%)];",
+            addChild(new RawSource(ctx.doc, format("const MAX_NUM_TESTCASES = %s;",
+                    db.getDetectedTestCases().length)));
+            appendText("\n");
+            addChild(new RawSource(ctx.doc, format("const g_mutids = [%(%s,%)];",
                     muts.data.map!(a => a.id))));
             appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_muts_orgs = [%(%s,%)];",
-                    muts.data.map!(a => window(a.txt.original)))));
-            appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_mut_st_map = [%('%s',%)'];",
+            addChild(new RawSource(ctx.doc, format("const g_mut_st_map = [%('%s',%)'];",
                     [EnumMembers!(Mutation.Status)])));
             appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_muts_muts = [%(%s,%)];",
-                    muts.data.map!(a => window(a.txt.mutation)))));
+            addChild(new RawSource(ctx.doc, format("const g_mut_kind_map = [%('%s',%)'];",
+                    [EnumMembers!(Mutation.Kind)])));
             appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_muts_st = [%(%s,%)];",
-                    muts.data.map!(a => a.mut.status.to!ubyte))));
+            addChild(new RawSource(ctx.doc, format("const g_mut_kindGroup_map = [%('%s',%)'];",
+                    [EnumMembers!(MutationKind)])));
             appendText("\n");
-            addChild(new RawSource(ctx.doc, format("var g_muts_meta = [%(%s,%)];",
-                    muts.data.map!(a => a.metaData.kindToString))));
+
+            // Creates a list of number of kills per testcase.
+            appendChild(new RawSource(ctx.doc, "var g_testcases_kills = {}"));
+            appendText("\n");
+            foreach (tc; db.getDetectedTestCases()) {
+                appendChild(new RawSource(ctx.doc, format("g_testcases_kills['%s'] = [%s];",
+                        tc, db.getTestCaseInfo(tc, kinds).killedMutants)));
+                appendText("\n");
+            }
+            appendChild(new RawSource(ctx.doc, mut_data));
             appendText("\n");
         }
 
@@ -269,12 +292,11 @@ struct FileIndex {
         import dextool.plugin.mutate.backend.report.html.page_test_case_similarity;
         import dextool.plugin.mutate.backend.report.html.page_test_group_similarity;
         import dextool.plugin.mutate.backend.report.html.page_test_groups;
+        import dextool.plugin.mutate.backend.report.html.page_tree_map;
 
         auto index = tmplBasicPage;
         index.title = format("Mutation Testing Report %(%s %) %s",
                 humanReadableKinds, Clock.currTime);
-
-        //There's probably a more appropriate place to do this
         auto s = index.root.childElements("head")[0].addChild("script");
         s.addChild(new RawSource(index, js_index));
 
@@ -294,6 +316,7 @@ struct FileIndex {
         }
         addSubPage(() => makeLongTermView(db, conf, humanReadableKinds, kinds),
                 "long_term_view", "Long Term View");
+        addSubPage(() => makeTreeMapPage(files.data), "tree_map", "Treemap");
         if (ReportSection.tc_groups in sections)
             addSubPage(() => makeTestGroups(db, conf, humanReadableKinds,
                     kinds), "test_groups", "Test Groups");
@@ -673,7 +696,8 @@ void toIndex(FileIndex[] files, Element root, string htmlFileDir) @trusted {
     import std.conv : to;
     import std.path : buildPath;
 
-    auto tbl = tmplDefaultTable(root, [
+    auto tbl_container = root.addChild("div").addClass("tbl_container");
+    auto tbl = tmplDefaultTable(tbl_container, [
             "Path", "Score", "Alive", "NoMut", "Total"
             ]);
 
