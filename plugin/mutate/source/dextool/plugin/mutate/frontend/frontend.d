@@ -266,39 +266,18 @@ ExitStatusType modeInitConfig(ref ArgParser conf) @safe {
 }
 
 ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) {
-    import dextool.plugin.mutate.backend : runAnalyzer;
+    import dextool.plugin.mutate.backend : runAnalyzer, runSchemataAnalyzer;
     import dextool.plugin.mutate.frontend.argparser : printFileAnalyzeHelp;
-
-    ExitStatusType est;
-
-    if (conf.data.schemata) {
-        est = modeSchemata(conf, dacc);
-    } else {
-        printFileAnalyzeHelp(conf);
-        est = runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
-    }
-
-    return est;
-}
-
-// should not be trusted, temporary for mutant schemata testing
-ExitStatusType modeSchemata(ref ArgParser conf, ref DataAccess dacc) @trusted {
-    import mutantschemata;
     import dextool.type: Path;
 
-    try {
-        Path db = Path(conf.data.db);
-        SchemataApi sa = makeSchemataApi(db, dacc.fusedCompileDb, conf.compileDb.dbs[0]);
+    ExitStatusType est;
+    printFileAnalyzeHelp(conf);
 
-        foreach (f; dacc.db.getFiles()){
-            sa.runSchemata(f);
-        }
-        sa.apiClose();
-    } catch (Exception e) {
-        () @trusted { logger.trace(e); logger.warning(e.msg); }();
-    }
-
-    return ExitStatusType.Ok;
+    if (conf.data.schemata)
+        return runSchemataAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc,
+                                    dacc.io, Path(conf.data.db), dacc.fusedCompileDb, conf.compileDb.dbs[0]);
+    else
+        return runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io);
 }
 
 ExitStatusType modeGenerateMutant(ref ArgParser conf, ref DataAccess dacc) {

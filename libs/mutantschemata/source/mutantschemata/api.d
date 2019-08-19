@@ -40,7 +40,7 @@ import std.array: array, empty;
 import logger = std.experimental.logger;
 
 // Entry point for Dextool mutate
-SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) {
+SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) @trusted {
     SchemataApi sa = new SchemataApi(db, ccdb, ccdbPath);
     return sa;
 }
@@ -109,10 +109,10 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     CppStr apiFindInclude(CppStr cs_file, CppStr cs_include) {
         return dToCpp(findInclude(ccdb, Path(cppToD!CppStr(cs_file)), Path(cppToD!CppStr(cs_include))));
     }
-    void apiClose(){
+    void apiClose() @trusted {
         handler.closeDB();
     }
-    void runSchemata(Path file) {
+    void runSchemata(Path file) @trusted {
         runSchemataCpp(this, dToCpp(file), dToCpp(ccdbPath));
     }
 }
