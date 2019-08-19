@@ -29,6 +29,8 @@ import dextool.plugin.mutate.config : ConfigCompiler;
 
 import mutantschemata;
 
+import std.stdio: writeln;
+
 version (unittest) {
     import unit_threaded.assertions;
 }
@@ -36,40 +38,27 @@ version (unittest) {
 /** Analyze the files in `frange` for mutations.
  */
 ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
-        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio) @safe {
+        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio,
+        Path dbPath, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool isSchemata) @safe {
+
     auto analyzer = Analyzer(db, val_loc, fio, conf);
+    SchemataApi sa;
+
+    if (isSchemata)
+        sa = makeSchemataApi(dbPath, ccdb, ccdbPath);
 
     foreach (in_file; frange) {
         try {
-            analyzer.process(in_file);
-        } catch (Exception e) {
-            () @trusted { logger.trace(e); logger.warning(e.msg); }();
-        }
-    }
-    analyzer.finalize;
-
-    return ExitStatusType.Ok;
-}
-
-/** Analyze the files in `frange` for mutations using schemata
-    TODO: refactor into runAnalyzer to avoid repetition of code
- */
-ExitStatusType runSchemataAnalyzer(ref Database db, ConfigCompiler conf,
-        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio, Path dbPath,
-        CompileCommandDB ccdb, AbsolutePath ccdbPath) @safe {
-    auto analyzer = Analyzer(db, val_loc, fio, conf);
-    SchemataApi sa = makeSchemataApi(dbPath, ccdb, ccdbPath);
-
-    foreach (in_file; frange) {
-        try {
-            analyzer.processSchemata(in_file, dbPath, ccdb, ccdbPath, sa);
+            analyzer.process(in_file, sa);
         } catch (Exception e) {
             () @trusted { logger.trace(e); logger.warning(e.msg); }();
         }
     }
 
-    sa.runSchemata();
-    sa.apiClose();
+    if (sa !is null) {
+        sa.runSchemata();
+        sa.apiClose();
+    }
 
     analyzer.finalize;
 
@@ -121,7 +110,7 @@ struct Analyzer {
         db.removeAllFiles;
     }
 
-    void process(Nullable!SearchResult in_file) @safe {
+    void process(Nullable!SearchResult in_file, SchemataApi schemataApi) @safe {
         if (in_file.isNull)
             return;
 
@@ -137,52 +126,28 @@ struct Analyzer {
             return;
         }
 
-        if (analyzed_files.contains(checked_in_file))
+        if (!shouldAnalyze(checked_in_file))
             return;
 
         analyzed_files.add(checked_in_file);
 
-        () @trusted {
-            auto ctx = ClangContext(Yes.useInternalHeaders, Yes.prependParamSyntaxOnly);
-            auto tstream = new TokenStreamImpl(ctx);
+        if (schemataApi !is null) {
+            schemataApi.addFileToMutate(checked_in_file);
+        } else {
+            () @trusted {
+                auto ctx = ClangContext(Yes.useInternalHeaders, Yes.prependParamSyntaxOnly);
+                auto tstream = new TokenStreamImpl(ctx);
 
-            auto files = analyzeForMutants(in_file, checked_in_file, ctx, tstream);
-            // TODO: filter files so they are only analyzed once for comments
-            foreach (f; files)
-                analyzeForComments(f, tstream);
-        }();
+                auto files = analyzeForMutants(in_file, checked_in_file, ctx, tstream);
+                // TODO: filter files so they are only analyzed once for comments
+                foreach (f; files)
+                    analyzeForComments(f, tstream);
+            }();
+        }
     }
 
-    // TODO: refactor into process to avoid repetition of code
-    void processSchemata(Nullable!SearchResult in_file, Path dbPath, CompileCommandDB ccdb, AbsolutePath ccdbPath, ref SchemataApi sa) @safe {
-        if (in_file.isNull)
-            return;
-
-        // TODO: this should be generic for Dextool.
-        in_file.flags.forceSystemIncludes = conf.forceSystemIncludes;
-
-        // find the file and flags to analyze
-        Exists!AbsolutePath checked_in_file;
-        try {
-            checked_in_file = makeExists(in_file.absoluteFile);
-        } catch (Exception e) {
-            logger.warning(e.msg);
-            return;
-        }
-
-        if (!val_loc.shouldAnalyze(checked_in_file))
-            return;
-
-        if (analyzed_files.contains(checked_in_file))
-            return;
-
-        analyzed_files.add(checked_in_file);
-
-        try {
-            sa.addFileToMutate(checked_in_file);
-        } catch (Exception e) {
-            () @trusted { logger.trace(e); logger.warning(e.msg); }();
-        }
+    bool shouldAnalyze(AbsolutePath file) @safe {
+        return val_loc.shouldAnalyze(file) && !analyzed_files.contains(file);
     }
 
     Path[] analyzeForMutants(SearchResult in_file,
