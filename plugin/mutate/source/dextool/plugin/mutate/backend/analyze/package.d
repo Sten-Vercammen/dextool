@@ -27,6 +27,8 @@ import dextool.plugin.mutate.backend.interface_ : ValidateLoc, FilesysIO;
 import dextool.plugin.mutate.backend.utility : checksum, trustedRelativePath, Checksum;
 import dextool.plugin.mutate.config : ConfigCompiler;
 
+import mutantschemata;
+
 version (unittest) {
     import unit_threaded.assertions;
 }
@@ -55,20 +57,23 @@ ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
 ExitStatusType runSchemataAnalyzer(ref Database db, ConfigCompiler conf,
         ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio, Path dbPath,
         CompileCommandDB ccdb, AbsolutePath ccdbPath) @safe {
-
     auto analyzer = Analyzer(db, val_loc, fio, conf);
+    SchemataApi sa = makeSchemataApi(dbPath, ccdb, ccdbPath);
 
     foreach (in_file; frange) {
         try {
-            analyzer.processSchemata(in_file, dbPath, ccdb, ccdbPath);
+            analyzer.processSchemata(in_file, dbPath, ccdb, ccdbPath, sa);
         } catch (Exception e) {
             () @trusted { logger.trace(e); logger.warning(e.msg); }();
         }
     }
+
+    sa.runSchemata();
+    sa.apiClose();
+
     analyzer.finalize;
 
     return ExitStatusType.Ok;
-
 }
 
 private:
@@ -149,7 +154,7 @@ struct Analyzer {
     }
 
     // TODO: refactor into process to avoid repetition of code
-    void processSchemata(Nullable!SearchResult in_file, Path dbPath, CompileCommandDB ccdb, AbsolutePath ccdbPath) @safe {
+    void processSchemata(Nullable!SearchResult in_file, Path dbPath, CompileCommandDB ccdb, AbsolutePath ccdbPath, ref SchemataApi sa) @safe {
         if (in_file.isNull)
             return;
 
@@ -174,11 +179,7 @@ struct Analyzer {
         analyzed_files.add(checked_in_file);
 
         try {
-            import mutantschemata;
-
-            SchemataApi sa = makeSchemataApi(dbPath, ccdb, ccdbPath);
-            sa.runSchemata(checked_in_file);
-            sa.apiClose();
+            sa.addFileToMutate(checked_in_file);
         } catch (Exception e) {
             () @trusted { logger.trace(e); logger.warning(e.msg); }();
         }

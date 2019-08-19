@@ -35,7 +35,7 @@ import dextool.plugin.mutate.backend.database: MutationPointTbl;
 import dextool.compilation_db: CompileCommandDB;
 
 import std.range: front;
-import std.array: array, empty;
+import std.array: Appender, appender, array, empty, join;
 
 import logger = std.experimental.logger;
 
@@ -50,6 +50,7 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     private DBHandler handler;
     private CompileCommandDB ccdb;
     private AbsolutePath ccdbPath;
+    private Appender!(Path[]) files_appender;
 
     this(Path dbPath, CompileCommandDB c, AbsolutePath cPath) {
         handler = DBHandler(dbPath);
@@ -112,7 +113,10 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     void apiClose() @trusted {
         handler.closeDB();
     }
-    void runSchemata(Path file) @trusted {
-        runSchemataCpp(this, dToCpp(file), dToCpp(ccdbPath));
+    void addFileToMutate(Path file) @trusted {
+        files_appender.put(file);
+    }
+    void runSchemata() @trusted {
+        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath));
     }
 }
