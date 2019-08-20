@@ -40,8 +40,9 @@ import std.array: Appender, appender, array, empty, join;
 import logger = std.experimental.logger;
 
 // Entry point for Dextool mutate
-SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) @trusted {
-    SchemataApi sa = new SchemataApi(db, ccdb, ccdbPath);
+//SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) @trusted {
+SchemataApi makeSchemataApi(SchemataInformation si) @trusted {
+    SchemataApi sa = new SchemataApi(si);
     return sa;
 }
 
@@ -50,12 +51,14 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     private DBHandler handler;
     private CompileCommandDB ccdb;
     private AbsolutePath ccdbPath;
+    private AbsolutePath mainFile;
     private Appender!(Path[]) files_appender;
 
-    this(Path dbPath, CompileCommandDB c, AbsolutePath cPath) {
-        handler = DBHandler(dbPath);
-        ccdb = c;
-        ccdbPath = cPath;
+    this (SchemataInformation si) {
+        handler = DBHandler(si.databasePath);
+        ccdb = si.compileCommand;
+        ccdbPath = si.compileCommandPath;
+        mainFile = si.mainFile;
     }
 
     // Override of functions in external interface
@@ -117,6 +120,6 @@ extern (C++) class SchemataApi: SchemataApiCpp {
         files_appender.put(file);
     }
     void runSchemata() @trusted {
-        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath));
+        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath), dToCpp(mainFile));
     }
 }

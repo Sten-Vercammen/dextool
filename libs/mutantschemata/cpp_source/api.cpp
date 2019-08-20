@@ -17,7 +17,7 @@ in order to call D code and insert/select mutants from db obtained from Dextool 
 #include <cstring>
 #include <sstream>
 
-void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs, CppString::CppStr ccdbPath){
+void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs, CppString::CppStr ccdbPath, CppString::CppStr mainFile){
     std::cout << "here is: " << *cs.cppStr << std::endl;
     //llvm::errs() << "Usage: rewritersample <file,otherfile,...> includeDir workingDir\n";
     // return 1;
@@ -48,4 +48,5 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs, CppString::CppStr
 
     // call setup of clang
     setupClang(argv.size() - 1, argv.data());
+    fixMainFile(mainFile.cppStr->c_str());
 }

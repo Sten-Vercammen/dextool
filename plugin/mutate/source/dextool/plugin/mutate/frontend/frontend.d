@@ -270,13 +270,21 @@ ExitStatusType modeAnalyze(ref ArgParser conf, ref DataAccess dacc) {
     import dextool.plugin.mutate.frontend.argparser : printFileAnalyzeHelp;
     import dextool.type: Path;
 
+    import mutantschemata : SchemataInformation;
+
     import std.range.primitives: empty;
 
     ExitStatusType est;
     printFileAnalyzeHelp(conf);
 
-    return runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io,
-        Path(conf.data.db), dacc.fusedCompileDb, conf.compileDb.dbs[0], !conf.data.schemata.empty);
+    SchemataInformation si = SchemataInformation(
+                            AbsolutePath(Path(conf.data.db)),
+                            dacc.fusedCompileDb,
+                            AbsolutePath(Path(conf.compileDb.dbs[0])),
+                            !conf.data.schemata.empty,
+                            AbsolutePath(Path(conf.data.mainfile)));
+
+    return runAnalyzer(dacc.db, conf.compiler, dacc.frange, dacc.validateLoc, dacc.io, si);
 }
 
 ExitStatusType modeGenerateMutant(ref ArgParser conf, ref DataAccess dacc) {

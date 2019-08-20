@@ -29,8 +29,6 @@ import dextool.plugin.mutate.config : ConfigCompiler;
 
 import mutantschemata;
 
-import std.stdio: writeln;
-
 version (unittest) {
     import unit_threaded.assertions;
 }
@@ -38,14 +36,13 @@ version (unittest) {
 /** Analyze the files in `frange` for mutations.
  */
 ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
-        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio,
-        Path dbPath, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool isSchemata) @safe {
+        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio, SchemataInformation si) @safe {
 
     auto analyzer = Analyzer(db, val_loc, fio, conf);
     SchemataApi sa;
 
-    if (isSchemata)
-        sa = makeSchemataApi(dbPath, ccdb, ccdbPath);
+    if (si.isActive)
+        sa = makeSchemataApi(si);
 
     foreach (in_file; frange) {
         try {

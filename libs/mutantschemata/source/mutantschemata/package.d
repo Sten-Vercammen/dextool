@@ -10,6 +10,7 @@ one at http://mozilla.org/MPL/2.0/.
 module mutantschemata;
 
 public import mutantschemata.api;
+public import mutantschemata.type;
 
 import mutantschemata.d_string;
 import mutantschemata.externals;

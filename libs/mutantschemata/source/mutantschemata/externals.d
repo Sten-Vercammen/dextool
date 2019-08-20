@@ -34,7 +34,7 @@ extern (C++):
     }
 
     // External C++ functions
-    void runSchemataCpp(SchemataApiCpp, CppStr, CppStr);
+    void runSchemataCpp(SchemataApiCpp, CppStr, CppStr, CppStr);
 
 // External C++ string implementation
 extern (C++, CppString):

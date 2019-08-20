@@ -14,8 +14,27 @@ module mutantschemata.type;
 
 import mutantschemata.externals;
 
+import dextool.type: AbsolutePath;
+import dextool.compilation_db: CompileCommandDB;
+
 struct SchemataFileString {
     string fpath;
     SchemataMutant[] mutants;
     string code;
+}
+
+struct SchemataInformation {
+    AbsolutePath databasePath;
+    CompileCommandDB compileCommand;
+    AbsolutePath compileCommandPath;
+    bool isActive;
+    AbsolutePath mainFile;
+
+    this (AbsolutePath db, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool active, AbsolutePath main) @safe {
+        this.databasePath = db;
+        this.compileCommand = ccdb;
+        this.compileCommandPath = ccdbPath;
+        this.isActive = active;
+        this.mainFile = main;
+    }
 }

@@ -5,6 +5,8 @@ set(dextool_mutantschemata_cpp_source_SRC
     ${CMAKE_CURRENT_LIST_DIR}/cpp_source/api.cpp
     ${CMAKE_CURRENT_LIST_DIR}/cpp_source/type.cpp
     ${CMAKE_CURRENT_LIST_DIR}/cpp_source/cpp_string.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/cpp_source/rewrite.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/cpp_source/type.cpp
 )
 add_library(dextool_mutantschemata_cpp_source STATIC ${dextool_mutantschemata_cpp_source_SRC})
 set_target_properties(dextool_mutantschemata_cpp_source PROPERTIES

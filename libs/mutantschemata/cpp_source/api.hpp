@@ -37,4 +37,4 @@ public:
     virtual CppString::CppStr apiFindInclude(CppString::CppStr, CppString::CppStr);
 };
 
-void runSchemataCpp (SchemataApiCpp *sac, CppString::CppStr cs);
+void runSchemataCpp (SchemataApiCpp, CppString::CppStr, CppString::CppStr, CppString::CppStr);
