@@ -25,7 +25,6 @@
 
 
 // defines to control what happens \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\|
-//#define onlyAddSub
 #define debugDuplicateMutantPrevention
 // config mutant schemata (not really implemented)
 bool negateBinaryOperators = true;
@@ -145,7 +144,8 @@ clang::SourceLocation getFileLocSlowCase(clang::SourceLocation Loc) {
         if (SourceManager->isMacroArgExpansion(Loc))
             Loc = SourceManager->getImmediateSpellingLoc(Loc);
         else
-            Loc = SourceManager->getImmediateExpansionRange(Loc).getBegin();
+            //TODO in later versions of clang this doesn't return a pair, but the CharSourceRange class (we should then use .begin())
+            Loc = SourceManager->getImmediateExpansionRange(Loc).first;
     } while (!Loc.isFileID());
     return Loc;
 }
@@ -316,13 +316,13 @@ private:
         // get lhs of expression
         std::string lhs;
         llvm::raw_string_ostream lhs_expr_stream(lhs);
-        binOp->getLHS()->printPretty(lhs_expr_stream, nullptr, astContext->getPrintingPolicy(), 0, astContext);
+        binOp->getLHS()->printPretty(lhs_expr_stream, nullptr, pp);
         lhs_expr_stream.flush();
         
         // get rhs of expression
         std::string rhs;
         llvm::raw_string_ostream rhs_expr_stream(rhs);
-        binOp->getRHS()->printPretty(rhs_expr_stream, nullptr, astContext->getPrintingPolicy(), 0, astContext);
+        binOp->getRHS()->printPretty(rhs_expr_stream, nullptr, pp);
         rhs_expr_stream.flush();
         
         // get expression with mutant schemata
@@ -339,8 +339,8 @@ private:
         // calculate offset and FileEntry (we don;t use FileID as this can change depending on the order of opening files etc.)
         const clang::FileEntry *fE;
         unsigned exprOffs, bracketsOffs;
-        calculateOffsetLoc(binOp->getBeginLoc(), fE, exprOffs);
-        calculateOffsetLoc(binOp->getEndLoc(), fE, bracketsOffs, true);
+        calculateOffsetLoc(binOp->getLocStart(), fE, exprOffs);
+        calculateOffsetLoc(binOp->getLocEnd(), fE, bracketsOffs, true);
         
         // create and store the created (meta-) mutant
         InsertedMutant *im = new InsertedMutant(fE, exprOffs, bracketsOffs);
@@ -389,7 +389,7 @@ public:
     }
     
     virtual bool VisitStmt(clang::Stmt *s) {
-        clang::FullSourceLoc FullLocation = astContext->getFullLoc(s->getBeginLoc());
+        clang::FullSourceLoc FullLocation = astContext->getFullLoc(s->getLocStart());
         if (!isfileToMutate(FullLocation)) {
             return true;
         }
@@ -681,7 +681,7 @@ static llvm::cl::OptionCategory MutantShemataCategory("mutation-schemata options
 /**
  * Expecting: argv: -p ../googletest/build filePathToMutate1 filePathToMutate2 ...
  */
-void main(int argc, const char **argv) {
+int setupClang(int argc, const char **argv) {
     // parse the command-line args passed to your code
     clang::tooling::CommonOptionsParser op(argc, argv, MutantShemataCategory);
     
@@ -694,8 +694,7 @@ void main(int argc, const char **argv) {
     clang::tooling::ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     
     // run the Clang Tool, creating a new FrontendAction
-    //int result =
-    Tool.run(clang::tooling::newFrontendActionFactory<MutationFrontendAction>().get());
+    int result = Tool.run(clang::tooling::newFrontendActionFactory<MutationFrontendAction>().get());
     
     /*
      * move newly created files onto the old files
@@ -709,7 +708,7 @@ void main(int argc, const char **argv) {
     
     llvm::errs() << "\nMutations found: " << mutant_count - 1 << "\n";
     
-    //return result;
+    return result;
 }
 ///////////////////////////////////////////////////////////////////////////////|
 #endif // MS_CLANG_REWRITE
