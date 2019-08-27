@@ -26,7 +26,7 @@ struct DBHandler {
         db = Miniorm(dbPath);
     }
 
-    void insertFromDB(T)(T t) {
+    void insertInDB(T)(T t) {
         db.run(insert!T.insert, t);
     }
     T[] selectFromDB(T)(string condition = "") {

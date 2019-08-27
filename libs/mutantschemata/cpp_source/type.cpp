@@ -16,6 +16,7 @@ namespace CppType {
 
 void SchemataMutant::print(){
     std::cout << "SchemataMutant: " << std::endl;
+    std::cout << "id: " << id << std::endl;
     std::cout << "SourceLoc line: " << loc.line << ", col: " << loc.column << std::endl;
     std::cout << "Offset begin: " << offset.begin << ", end: " << offset.end << std::endl;
     std::cout << "Inject: " << inject << std::endl;

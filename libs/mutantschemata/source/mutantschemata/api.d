@@ -1,4 +1,4 @@
-/**
+insertInDB/**
 Copyright: Copyright (c) 2019, Niklas Pettersson. All rights reserved.
 License: MPL-2
 Author: Niklas Pettersson (nikpe353@student.liu.se)
@@ -63,10 +63,10 @@ extern (C++) class SchemataApi: SchemataApiCpp {
 
     // Override of functions in external interface
     void apiInsertSchemataMutant(SchemataMutant sm) {
-        handler.insertFromDB!SchemataMutant(sm);
+        handler.insertInDB!SchemataMutant(sm);
     }
     void apiInsertSchemataFile(SchemataFile sf){
-        handler.insertFromDB!SchemataFileString(convertToFs(sf));
+        handler.insertInDB!SchemataFileString(convertToFs(sf));
     }
     SchemataMutant apiSelectSchemataMutant() {
         return sanitize(handler.selectFromDB!SchemataMutant());
