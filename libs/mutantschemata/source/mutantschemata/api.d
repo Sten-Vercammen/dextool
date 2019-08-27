@@ -1,4 +1,4 @@
-insertInDB/**
+/**
 Copyright: Copyright (c) 2019, Niklas Pettersson. All rights reserved.
 License: MPL-2
 Author: Niklas Pettersson (nikpe353@student.liu.se)
