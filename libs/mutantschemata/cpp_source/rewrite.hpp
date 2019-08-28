@@ -8,6 +8,7 @@
 #include <sstream>
 #include <vector>
 #include <fstream>
+#include <functional>
 
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTContext.h"
@@ -25,11 +26,12 @@
 
 
 // defines to control what happens \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\|
-#define debugDuplicateMutantPrevention
-// config mutant schemata (not really implemented)
-bool negateBinaryOperators = true;
-bool negateOverloadedOperators = false;
-bool negateUnaryOperators = false;
+// config mutant schemata
+bool ROR = true;    // Relational Operator Replacement  <,<=,>,>=,==,!=,true,false
+bool AOR = true;    // Arithmetic Operator Replacement
+bool LCR = true;    // Logical Connector Replacement
+//bool UOI = true;    // Unary Operator Insertion
+//bool ABS = true;    // Absolute Value Insertion
 ///////////////////////////////////////////////////////////////////////////////|
 
 
@@ -54,9 +56,10 @@ struct InsertedMutant {
 struct MutantInsert {
     InsertedMutant* mutantLoc;
     std::string expr;
+    std::size_t exprHash;
     std::string brackets;
     
-    MutantInsert(InsertedMutant* m, std::string e, std::string b): mutantLoc(m), expr(e), brackets(b) {}
+    MutantInsert(InsertedMutant* m, std::string e, std::string b): mutantLoc(m), expr(e), exprHash(std::hash<std::string>{}(e)), brackets(b) {}
 };
 
 std::vector<MutantInsert*> mutantInserts;
@@ -65,6 +68,9 @@ struct mutantLocComp {
     bool operator() (const MutantInsert *lhs, const MutantInsert *rhs) const {
         if (lhs->mutantLoc->fE == rhs->mutantLoc->fE) {
             if (lhs->mutantLoc->exprOffs == rhs->mutantLoc->exprOffs) {
+                if (lhs->mutantLoc->bracketsOffs == rhs->mutantLoc->bracketsOffs) {
+                    return lhs->exprHash < rhs->exprHash;
+                }
                 return lhs->mutantLoc->bracketsOffs < rhs->mutantLoc->bracketsOffs;
             }
             return lhs->mutantLoc->exprOffs < rhs->mutantLoc->exprOffs;
@@ -103,7 +109,7 @@ public:
         if (!FID.getHashValue()) {
             FID = this->getSourceMgr().createFileID(fE, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         }
-
+        
         llvm::SmallString<128> indentedStr;
         if (indentNewLines && Str.find('\n') != StringRef::npos) {
             StringRef MB = this->getSourceMgr().getBufferData(FID);
@@ -139,13 +145,22 @@ public:
     }
 };
 
+// fix backWards compatibility
+clang::SourceLocation getSR(clang::CharSourceRange SR) {
+    return SR.getBegin();
+}
+// fix backWards compatibility
+clang::SourceLocation getSR(std::pair<clang::SourceLocation, clang::SourceLocation> SR) {
+    return SR.first;
+}
+
 clang::SourceLocation getFileLocSlowCase(clang::SourceLocation Loc) {
     do {
-        if (SourceManager->isMacroArgExpansion(Loc))
+        if (SourceManager->isMacroArgExpansion(Loc)) {
             Loc = SourceManager->getImmediateSpellingLoc(Loc);
-        else
-            //TODO in later versions of clang this doesn't return a pair, but the CharSourceRange class (we should then use .begin())
-            Loc = SourceManager->getImmediateExpansionRange(Loc).first;
+        } else {
+            Loc = getSR(SourceManager->getImmediateExpansionRange(Loc));
+        }
     } while (!Loc.isFileID());
     return Loc;
 }
@@ -154,6 +169,7 @@ clang::SourceLocation getFileLoc(clang::SourceLocation Loc) {
     if (Loc.isFileID()) return Loc;
     return getFileLocSlowCase(Loc);
 }
+
 
 /**
  * Calculates offset of location, optionally increased with the range of the last token
@@ -234,8 +250,8 @@ void writeChangedFiles(bool inPlace) {
                         // write what's in the buffer to a temporary file
                         // placed here to prevent writing the mutated file multiple times
                         std::error_code error_code;
-                        std::string fileName = file->getName().str() + "_mutated_" + std::to_string(mutant_count);
-//                        std::string fileName = file->getName().str() + "_mutated";
+                        //                        std::string fileName = file->getName().str() + "_mutated_" + std::to_string(mutant_count);
+                        std::string fileName = file->getName().str() + "_mutated";
                         llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
                         outFile << std::string(I->second.begin(), I->second.end());
                         outFile.close();
@@ -306,13 +322,26 @@ void overWriteChangedFile() {
 }
 ///////////////////////////////////////////////////////////////////////////////|
 
+
+enum Singleton {
+    LHS,
+    RHS,
+    False,
+    True
+};
+
 // actual clang functions to traverse AST \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\|
 class MutatingVisitor : public clang::RecursiveASTVisitor<MutatingVisitor> {
 private:
     clang::ASTContext *astContext;
     clang::PrintingPolicy pp;
     
-    void insertMutantSchemata(clang::BinaryOperator *binOp, std::initializer_list<clang::BinaryOperatorKind> list) {
+    bool makesSense(clang::BinaryOperator *binOp, clang::BinaryOperatorKind Opc) {
+        //TODO use sema to verify
+        return true;
+    }
+    
+    void insertMutantSchemata(clang::BinaryOperator *binOp, std::initializer_list<clang::BinaryOperatorKind> list, std::initializer_list<Singleton> singletons) {
         // get lhs of expression
         std::string lhs;
         llvm::raw_string_ostream lhs_expr_stream(lhs);
@@ -326,17 +355,57 @@ private:
         rhs_expr_stream.flush();
         
         // get expression with mutant schemata
-        std::stringstream newExprStr;
-        std::string endBrackets;
-        for (auto elem : list) {
+        std::string newExpr;
+        std::string endBracket = ")";
+        for (const auto &elem: list) {
             if (binOp->getOpcode() != elem) {
-                //                newExprStr << "(MUTANT_NR == " << mutant_count++ <<" ? " << lhs << " " << clang::BinaryOperator::getOpcodeStr(elem).str() << " " << rhs << ": ";
-                newExprStr << " ? " << lhs << " " << clang::BinaryOperator::getOpcodeStr(elem).str() << " " << rhs << ": ";
-                endBrackets += ")";
+                if (makesSense(binOp, elem)) {
+                    newExpr = lhs;
+                    newExpr += " ";
+                    newExpr += clang::BinaryOperator::getOpcodeStr(elem).str();
+                    newExpr += " ";
+                    newExpr += rhs;
+                    newExpr += ": ";
+                    
+                    createAndStoreActualMutant(binOp, newExpr, endBracket);
+                } else {
+                    llvm::errs() << "new expression doesn't make sense! mutant not added\n";
+                }
             }
         }
         
-        // calculate offset and FileEntry (we don;t use FileID as this can change depending on the order of opening files etc.)
+        // check if we need to insert some singletons
+        for (const auto &elem: singletons) {
+            switch (elem) {
+                case Singleton::LHS:
+                    newExpr = lhs;
+                    newExpr += ": ";
+                    break;
+                case Singleton::RHS:
+                    newExpr = rhs;
+                    newExpr += ": ";
+                    break;
+                case Singleton::True:
+                    newExpr = "true: ";
+                    break;
+                case Singleton::False:
+                    newExpr = "false: ";
+                    break;
+                default:
+                    // continue for loop
+                    continue;
+            }
+            // insert the singleton
+            createAndStoreActualMutant(binOp, newExpr, endBracket);
+        }
+        
+    }
+    
+    void createAndStoreActualMutant(const clang::BinaryOperator *binOp, const std::string &newExpr, const std::string &endBracket) {
+        
+        
+        
+        // calculate offset and FileEntry (we don't use FileID as this can change depending on the order of opening files etc.)
         const clang::FileEntry *fE;
         unsigned exprOffs, bracketsOffs;
         calculateOffsetLoc(binOp->getLocStart(), fE, exprOffs);
@@ -344,25 +413,18 @@ private:
         
         // create and store the created (meta-) mutant
         InsertedMutant *im = new InsertedMutant(fE, exprOffs, bracketsOffs);
-        MutantInsert *mi = new MutantInsert(im, newExprStr.str(), endBrackets);
-
+        MutantInsert *mi = new MutantInsert(im, newExpr, endBracket);
+        
+        insertedMutants.value_comp() = insertedMutants.key_comp();
         std::set<MutantInsert*, mutantLocComp>::iterator it = insertedMutants.find(mi);
         if (it == insertedMutants.end()) {
             mutantInserts.push_back(mi);
             insertedMutants.insert(mi);
-//            llvm::errs() << "inserted mutant: " << mi->expr << "\n";
+            llvm::errs() << "inserted mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
             mutant_count++; //increase count as we are sure it isn't a duplicated vallid mutant
         } else {
-#ifdef debugDuplicateMutantPrevention
-            // TODO verify that the actual mutation is the same, print error when it's not
-            if ((*it)->expr.compare(mi->expr) != 0) {
-                llvm::errs() << "found a bug: duplicated mutant isn't the same:\nfound: " << (*it)->expr << "\nexpected: "<< mi->expr << "\n";
-            }
-#endif
+            llvm::errs() << "duplicate mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
         }
-        
-        
-       // llvm::errs() << "found a mutant\n";
     }
     
     /**
@@ -394,228 +456,245 @@ public:
             return true;
         }
         
+        
+        
         // mutate all expressions
         if (clang::isa<clang::Expr>(s)) {
             if (clang::isa<clang::BinaryOperator>(s)) {
                 clang::BinaryOperator *binOp = clang::cast<clang::BinaryOperator>(s);
-                if (negateBinaryOperators) {
-                    switch (binOp->getOpcode()) {
-                            // Multiplicative operators
-#ifndef onlyAddSub
-                        case clang::BO_Mul:
-                            insertMutantSchemata(binOp, {clang::BO_Div});
-                            break;
-                        case clang::BO_Div:
-                            insertMutantSchemata(binOp, {clang::BO_Mul});
-                            break;
-                        case clang::BO_Rem:
-                            //TODO
-                            break;
-                            // Additive operators
-#endif
-                        case clang::BO_Add:
-                            insertMutantSchemata(binOp, {clang::BO_Sub});
-                            break;
-                        case clang::BO_Sub:
-                            insertMutantSchemata(binOp, {clang::BO_Add});
-                            break;
-#ifndef onlyAddSub
-                            // Bitwise shift operators
-                        case clang::BO_Shl:
-                            insertMutantSchemata(binOp, {clang::BO_Shr});
-                            break;
-                        case clang::BO_Shr:
-                            insertMutantSchemata(binOp, {clang::BO_Shl});
-                            break;
-                            // Three-way comparison operator
-                            //case clang::BO_Cmp:
-                            //TODO
-                            //    break;
-                            // Relational operators
-                        case clang::BO_LT:
-                            insertMutantSchemata(binOp, {clang::BO_GT});
-                            break;
-                        case clang::BO_GT:
-                            insertMutantSchemata(binOp, {clang::BO_LT});
-                            break;
-                        case clang::BO_LE:
-                            insertMutantSchemata(binOp, {clang::BO_GE});
-                            break;
-                        case clang::BO_GE:
-                            insertMutantSchemata(binOp, {clang::BO_LE});
-                            break;
-                            // Equality operators
-                        case clang::BO_EQ:
-                            insertMutantSchemata(binOp, {clang::BO_NE});
-                            break;
-                        case clang::BO_NE:
-                            insertMutantSchemata(binOp, {clang::BO_EQ});
-                            break;
-                            // Bitwise AND operator
-                        case clang::BO_And:
-                            insertMutantSchemata(binOp, {clang::BO_Or});
-                            break;
-                        case clang::BO_Xor:
-                            //TODO
-                            break;
-                        case clang::BO_Or:
-                            insertMutantSchemata(binOp, {clang::BO_And});
-                            break;
-                            // Logical AND operator
-                        case clang::BO_LAnd:
-                            insertMutantSchemata(binOp, {clang::BO_LOr});
-                            break;
-                        case clang::BO_LOr:
-                            insertMutantSchemata(binOp, {clang::BO_LAnd});
-                            break;
-                            // Assignment operators
-                        case clang::BO_Assign:
-                            //TODO
-                            break;
-                        case clang::BO_MulAssign:
-                            insertMutantSchemata(binOp, {clang::BO_DivAssign});
-                            break;
-                        case clang::BO_DivAssign:
-                            insertMutantSchemata(binOp, {clang::BO_MulAssign});
-                            break;
-                        case clang::BO_RemAssign:
-                            //TODO
-                            break;
-                        case clang::BO_AddAssign:
-                            insertMutantSchemata(binOp, {clang::BO_SubAssign});
-                            break;
-                        case clang::BO_SubAssign:
-                            insertMutantSchemata(binOp, {clang::BO_AddAssign});
-                            break;
-                        case clang::BO_ShlAssign:
-                            insertMutantSchemata(binOp, {clang::BO_ShrAssign});
-                            break;
-                        case clang::BO_ShrAssign:
-                            insertMutantSchemata(binOp, {clang::BO_ShlAssign});
-                            break;
-                        case clang::BO_AndAssign:
-                            insertMutantSchemata(binOp, {clang::BO_OrAssign});
-                            break;
-                        case clang::BO_XorAssign:
-                            //TODO
-                            break;
-                        case clang::BO_OrAssign:
-                            insertMutantSchemata(binOp, {clang::BO_AndAssign});
-                            break;
-#endif
-                        default:
-                            break;
-                    }
-                } else if (negateUnaryOperators) {
-                    //TODO
-                } else if (false) {
-                    if (binOp->isPtrMemOp()) {
-                        
-                        
-                    } else if (binOp->isMultiplicativeOp()) {   // clang::BO_Mul, clang::BO_Div, clang::BO_Rem
-                        insertMutantSchemata(binOp, {clang::BO_Mul, clang::BO_Div, clang::BO_Rem});
-                    } else if (binOp->isAdditiveOp()) {         // clang::BO_Add, clang::BO_Sub
-                        insertMutantSchemata(binOp, {clang::BO_Add, clang::BO_Sub});
-                    } else if (binOp->isShiftOp()) {            // clang::BO_Shl, clang::BO_Shr
-                        insertMutantSchemata(binOp, {clang::BO_Shl, clang::BO_Shr});
-                    } else if (binOp->isBitwiseOp()) {          // clang::BO_And, clang::BO_Xor, clang::BO_Or
-                        insertMutantSchemata(binOp, {clang::BO_And, clang::BO_Xor, clang::BO_Or});
-                    } else if (binOp->isRelationalOp()) {       // clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE
-                        insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE});
-                    } else if (binOp->isEqualityOp()) {         // clang::BO_EQ, clang::BO_NE
-                        insertMutantSchemata(binOp, {clang::BO_EQ, clang::BO_NE});
-                    } else if (binOp->isComparisonOp()) {       // clang::BO_Cmp, isEqualityOp, isRelationalOp
-                        insertMutantSchemata(binOp, {clang::BO_EQ, clang::BO_LT, clang::BO_GT, clang::BO_LE, clang::BO_GE, clang::BO_NE});
-                    } else if (binOp->isLogicalOp()) {          // clang::BO_LAnd, clang::BO_LOr
-                        insertMutantSchemata(binOp, {clang::BO_LAnd, clang::BO_LOr});
-                    } else if (binOp->isAssignmentOp()) {       // clang::BO_Assign, clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign
-                        insertMutantSchemata(binOp, {clang::BO_Assign, clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign});
-                    } else if (binOp->isCompoundAssignmentOp()) {   // clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign
-                        insertMutantSchemata(binOp, {clang::BO_MulAssign, clang::BO_DivAssign, clang::BO_RemAssign, clang::BO_AddAssign, clang::BO_SubAssign, clang::BO_ShlAssign, clang::BO_ShrAssign, clang::BO_AndAssign, clang::BO_XorAssign, clang::BO_OrAssign});
-                    } else if (binOp->isShiftAssignOp()) {      // clang::BO_ShlAssign, clang::BO_ShrAssign
-                        insertMutantSchemata(binOp, {clang::BO_ShlAssign, clang::BO_ShrAssign});
-                    }
-                }
-            } else if (clang::isa<clang::CXXOperatorCallExpr>(s)) {
-                if (negateOverloadedOperators) {
-                    clang::CXXOperatorCallExpr *oExpr = clang::cast<clang::CXXOperatorCallExpr>(s);
-                    
-                    clang::OverloadedOperatorKind oOp = oExpr->getOperator();
-                    if (oOp == clang::OO_Plus) {
-                        printf("found CXXOperatorCallExpr expr of Addition in %s\n", oExpr->getStmtClassName());
-                        //TODO check if this is really the place where the oOp is declared
-                        clang::FunctionDecl *dDecl = oExpr->getDirectCallee();
-                        if (dDecl == nullptr) {
-                            llvm::errs() << "Overloaded operator is not a functionDecl -> paradox";
-                            exit(-1);
-                        }
-                        clang::FunctionDecl *def = dDecl->getDefinition();
-                        if (def == nullptr) {
-                            printf("definition is nullptr???\n");
-                            exit(1);
-                        }
-                        def->dump();
-                        if (!def->isOverloadedOperator()) {
-                            printf("overloaded operator is not an overloaded operator -> paradox");
-                            exit(1);
-                        }
-                        clang::DeclContext *dCtx = def->getParent();
-                        if (dCtx == NULL) {
-                            printf("decl context is null :(\n");
-                            exit(1);
-                        }
-                        printf("\ndumpLookups\n\n");
-                        //dCtx->dumpDeclContext();
-                        dCtx->dumpLookups();
-                        if (dCtx) {
-                            printf("declCtx != null\n");
-                            for (auto it = dCtx->decls_begin(); it != dCtx->decls_end(); ++it) {
-                                clang::FunctionDecl *funcDecl = (*it)->getAsFunction();
-                                if (funcDecl != NULL && funcDecl != def) {
-                                    if (funcDecl->isOverloadedOperator()) {
-                                        printf("its an overloaded operator!!! :O \n");
-                                    }
-                                    if (funcDecl->getReturnType() == def->getReturnType()) {
-                                        printf("is this the other one?\n");
-                                    }
-                                } else {
-                                    printf("nope, it's not a funcDecl\n");
-                                }
-                                //                            clang::Stmt *func = (*it)->getBody();
-                                //                            if (func) {
-                                //                                printf("exists\n");
-                                //                                func->dump();
-                                //                                func
-                                //                                if (clang::isa<CXXOperatorCallExpr>(func)) {
-                                //                                    CXXOperatorCallExpr *oExprOther = clang::cast<CXXOperatorCallExpr>(func);
-                                //                                    printf("it's also a operator\n");
-                                //                                    OverloadedOperatorKind oOpOther = oExprOther->getOperator();
-                                //                                    if (oOpOther == OO_Plus) {
-                                //                                        printf("and yes, its an CXXOperatorCallExpr expr of Addition in %s\n", oExprOther->getStmtClassName());
-                                //                                    }
-                                //                                }
-                                //                            }
-                            }
-                        } else {
-                            printf("declCtx == null\n");
-                        }
-                        //                    DeclContext *declCtx = decl->getDeclContext();   // semantical context (not lexical)
-                        
-                        
-                        // TODO check this in a better way, we must find the symbol table
-                        // as an operator does not have to be overloaded in the same file
-                        // or in the class intself
-                        // either check the symbol table, or also check the global space
-                    } else {
-                        printf("found CXXOperatorCallExpr expr of another kind\n");
-                    }
-                    exit(1);
-                }
+                mutateBinaryOperator(binOp);
+            } else if (clang::isa<clang::UnaryOperator>(s)) {
+                clang::UnaryOperator *unOp = clang::cast<clang::UnaryOperator>(s);
+                mutateUnaryOperator(unOp);
             }
         }
         return true;
     }
+    
+private:
+    void mutateBinaryOperator(clang::BinaryOperator *binOp) {
+        if (ROR) {
+            mutateBinaryROR(binOp);
+        }
+        if (AOR) {
+            mutateBinaryAOR(binOp);
+        }
+        if (LCR) {
+            mutateBinaryLCR(binOp);
+        }
+        //TODO UOI
+        //TODO ABS
+    }
+    
+    void mutateUnaryOperator(clang::UnaryOperator *unOp) {
+        //TODO ROR
+        //TODO AOR
+        //TODO LCR
+        //TODO UOI
+        //TODO ABS
+    }
+    
+    void mutateBinaryROR(clang::BinaryOperator *binOp) {
+        const clang::Type *typeLHS = binOp->getLHS()->getType().getTypePtr();
+        const clang::Type *typeRHS = binOp->getRHS()->getType().getTypePtr();
+        if (typeLHS->isBooleanType() && typeRHS->isBooleanType()) {
+            /* mutate booleans
+             * only mutate == and !=
+             * Mutations such as < for a boolean type is nonsensical in C++ or in C when the type is _Bool.
+             */
+            switch (binOp->getOpcode()) {
+                case clang::BO_EQ:
+                    insertMutantSchemata(binOp, {clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_NE:
+                    insertMutantSchemata(binOp, {clang::BO_EQ}, {Singleton::True});
+                    break;
+                default:
+                    break;
+            }
+        } else if (typeLHS->isFloatingType() && typeRHS->isFloatingType()) {
+            /* Mutate floats
+             * Note: that == and != isn't changed compared to the original mutation schema
+             * because normally they shouldn't be used for a floating point value but if they are,
+             * and it is a valid use, the original schema should work.
+             */
+            switch (binOp->getOpcode()) {
+                    // Relational operators
+                case clang::BO_LT:
+                    insertMutantSchemata(binOp, {clang::BO_GT}, {Singleton::False});
+                    break;
+                case clang::BO_GT:
+                    insertMutantSchemata(binOp, {clang::BO_LT}, {Singleton::False});
+                    break;
+                case clang::BO_LE:
+                    insertMutantSchemata(binOp, {clang::BO_GT}, {Singleton::True});
+                    break;
+                case clang::BO_GE:
+                    insertMutantSchemata(binOp, {clang::BO_LT}, {Singleton::True});
+                    break;
+                    // Equality operators
+                case clang::BO_EQ:
+                    insertMutantSchemata(binOp, {clang::BO_LE, clang::BO_GE}, {Singleton::False});
+                    break;
+                case clang::BO_NE:
+                    insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_GT}, {Singleton::True});
+                    break;
+                default:
+                    break;
+            }
+        } else if (typeLHS->isEnumeralType() && typeRHS->isEnumeralType()) {
+            /* Mutate the same type of enums
+             * TODO: verify that the enums are of the same type
+             */
+            switch (binOp->getOpcode()) {
+                    // Relational operators
+                case clang::BO_LT:
+                    insertMutantSchemata(binOp, {clang::BO_GE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_GT:
+                    insertMutantSchemata(binOp, {clang::BO_GE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_LE:
+                    insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                case clang::BO_GE:
+                    insertMutantSchemata(binOp, {clang::BO_GT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                    // Equality operators
+                case clang::BO_EQ:
+                    insertMutantSchemata(binOp, {}, {Singleton::False});
+                    // Specific additional schema for equal: TODO this need further investigation. It seems like the generated mutant can be simplified to true/false but for now I am not doing that because I may be wrong.
+                    //TODO if LHS is min enum literal: LHS <= RHS
+                    //TODO if LHS is max enum literal: LHS >= RHS
+                    //TODO if RHS is min enum literal: LHS >= RHS
+                    //TODO if RHS is max enum literal: LHS <= RHS
+                    break;
+                case clang::BO_NE:
+                    insertMutantSchemata(binOp, {}, {Singleton::True});
+                    // Specific additional schema for not equal:
+                    //TODO if LHS is min enum literal: LHS < RHS
+                    //TODO if LHS is max enum literal: LHS > RHS
+                    //TODO if RHS is min enum literal: LHS > RHS
+                    //TODO if RHS is max enum literal: LHS < RHS
+                    break;
+                default:
+                    break;
+            }
+        } else if (typeLHS->isPointerType() && typeRHS->isPointerType()) {
+            /* Mutate pointers
+             * This schema is only applicable when type of the expressions either sides is a pointer type.
+             */
+            switch (binOp->getOpcode()) {
+                    // Relational operators
+                case clang::BO_LT:
+                    insertMutantSchemata(binOp, {clang::BO_GE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_GT:
+                    insertMutantSchemata(binOp, {clang::BO_GE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_LE:
+                    insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                case clang::BO_GE:
+                    insertMutantSchemata(binOp, {clang::BO_GT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                    // Equality operators
+                case clang::BO_EQ:
+                    insertMutantSchemata(binOp, {clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_NE:
+                    insertMutantSchemata(binOp, {clang::BO_EQ}, {Singleton::True});
+                    break;
+                default:
+                    break;
+            }
+        } else {
+            //TODO verify this it's ok to use general rules and hope for the best
+            switch (binOp->getOpcode()) {
+                    // Relational operators
+                case clang::BO_LT:
+                    insertMutantSchemata(binOp, {clang::BO_LE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_GT:
+                    insertMutantSchemata(binOp, {clang::BO_GE, clang::BO_NE}, {Singleton::False});
+                    break;
+                case clang::BO_LE:
+                    insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                case clang::BO_GE:
+                    insertMutantSchemata(binOp, {clang::BO_GT, clang::BO_EQ}, {Singleton::True});
+                    break;
+                    // Equality operators
+                case clang::BO_EQ:
+                    insertMutantSchemata(binOp, {clang::BO_LE, clang::BO_GE}, {Singleton::False});
+                    break;
+                case clang::BO_NE:
+                    insertMutantSchemata(binOp, {clang::BO_LT, clang::BO_GT}, {Singleton::True});
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    
+    
+    void mutateBinaryAOR(clang::BinaryOperator *binOp) {
+        switch (binOp->getOpcode()) {
+                // Additive operators
+            case clang::BO_Add:
+                insertMutantSchemata(binOp, {clang::BO_Sub, clang::BO_Mul, clang::BO_Div, clang::BO_Rem}, {Singleton::LHS, Singleton::RHS});
+                break;
+            case clang::BO_Sub:
+                insertMutantSchemata(binOp, {clang::BO_Add, clang::BO_Mul, clang::BO_Div, clang::BO_Rem}, {Singleton::LHS, Singleton::RHS});
+                break;
+                // Multiplicative operators
+            case clang::BO_Mul:
+                insertMutantSchemata(binOp, {clang::BO_Sub, clang::BO_Add, clang::BO_Div, clang::BO_Rem}, {Singleton::LHS, Singleton::RHS});
+                break;
+            case clang::BO_Div:
+                insertMutantSchemata(binOp, {clang::BO_Sub, clang::BO_Mul, clang::BO_Add, clang::BO_Rem}, {Singleton::LHS, Singleton::RHS});
+                break;
+            case clang::BO_Rem:
+                insertMutantSchemata(binOp, {clang::BO_Sub, clang::BO_Mul, clang::BO_Div, clang::BO_Add}, {Singleton::LHS, Singleton::RHS});
+                break;
+            default:
+                break;
+        }
+    }
+    
+    
+    void mutateBinaryLCR(clang::BinaryOperator *binOp) {
+        switch (binOp->getOpcode()) {
+                // Logical operators
+            case clang::BO_LAnd:
+                insertMutantSchemata(binOp, {clang::BO_LOr}, {Singleton::True, Singleton::False, Singleton::LHS, Singleton::RHS});
+                break;
+            case clang::BO_LOr:
+                insertMutantSchemata(binOp, {clang::BO_LAnd}, {Singleton::True, Singleton::False, Singleton::LHS, Singleton::RHS});
+                break;
+                // Bitwise operator
+            case clang::BO_And:
+                insertMutantSchemata(binOp, {clang::BO_Or}, {Singleton::LHS, Singleton::RHS});
+                break;
+            case clang::BO_Xor:
+                //TODO not implemented by Dextool
+                break;
+            case clang::BO_Or:
+                insertMutantSchemata(binOp, {clang::BO_And}, {Singleton::LHS, Singleton::RHS});
+                break;
+            default:
+                break;
+        }
+    }
+    
+    void mutateBinaryUOI(clang::BinaryOperator *binOp) {
+    }
+    
+    void mutateBinaryABS(clang::BinaryOperator *binOp) {
+    }
+    
 };
+
 
 
 
@@ -665,7 +744,7 @@ public:
             // insert mutant before orig expression
             MutantRewriter *r = (MutantRewriter*)(&rewriter);
             //mi->mutantLoc->startExpr, mi->expr);
-            r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->exprOffs, "(MUTANT_NR == " + std::to_string(localMutantCount++) + mi->expr);
+            r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->exprOffs, "(MUTANT_NR == " + std::to_string(localMutantCount++) + " ? "+ mi->expr);
             // insert brackets to close mutant schemata's if statement
             r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->bracketsOffs, mi->brackets, true);
         }
