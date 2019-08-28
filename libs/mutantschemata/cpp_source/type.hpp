@@ -24,9 +24,10 @@ struct Offset {
     uint64_t end;
 };
 struct SchemataMutant {
+    uint64_t id;
     SourceLoc loc;
     Offset offset;
-    int inject;
+    //CppString::CppStr inject;
 
     void print();
 };

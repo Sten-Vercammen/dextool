@@ -77,7 +77,7 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     SchemataMutant apiSelectSchemataMutant(CppStr cs){
         return sanitize(handler.selectFromDB!SchemataMutant(cppToD!CppStr(cs)));
     }
-    SchemataMutant apiSelectMutant() {
+    /*SchemataMutant apiSelectMutant() {
         return sanitize(handler.selectFromDB!MutationPointTbl());
     }
     SchemataMutant apiSelectMutant(CppBytes cb) {
@@ -85,7 +85,7 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     }
     SchemataMutant apiSelectMutant(CppStr cs) {
         return sanitize(handler.selectFromDB!MutationPointTbl(cppToD!CppStr(cs)));
-    }
+    }*/
     void apiBuildMutant() {
         handler.buildSchemaDB!SchemataMutant();
     }

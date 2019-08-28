@@ -43,7 +43,7 @@ Path findIncludePath(ParseFlags pf, Path include) {
 }
 // creates an empty mutant
 SchemataMutant createSchemataMutant() {
-    return SchemataMutant(-1, SourceLoc(0,0), Offset(0,0), "");
+    return SchemataMutant(-1, SourceLoc(0,0), Offset(0,0));
 }
 SchemataMutant createSchemataMutant(SchemataMutant sm) {
     return sm;

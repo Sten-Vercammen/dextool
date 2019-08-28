@@ -19,9 +19,9 @@ extern (C++):
         SchemataMutant apiSelectSchemataMutant();
         SchemataMutant apiSelectSchemataMutant(CppBytes);
         SchemataMutant apiSelectSchemataMutant(CppStr);
-        SchemataMutant apiSelectMutant();
+        /*SchemataMutant apiSelectMutant();
         SchemataMutant apiSelectMutant(CppBytes);
-        SchemataMutant apiSelectMutant(CppStr);
+        SchemataMutant apiSelectMutant(CppStr);*/
         void apiBuildMutant();
         void apiBuildFile();
         void apiDeleteMutant(CppBytes);
@@ -71,7 +71,7 @@ extern (C++, CppType):
         int id;         // a way to differentiate each mutant (will be the same as x in "MUTANT_NR = x")
         SourceLoc loc;  // for reporting purposes, specifies which line the mutant is on and where it begins
         Offset offset;  // begin and end of where the insertion will be (Ex: a + b, the offset will specify where the + begins, and where it ends)
-        CppStr inject;  // the characters we want to insert instead of original expression (Ex: a + b -> a - b, then this variable will be "-")
+        //CppStr inject;  // the characters we want to insert instead of original expression (Ex: a + b -> a - b, then this variable will be "-")
 
         void print();   // helperfunction, only for printing when testing
     }

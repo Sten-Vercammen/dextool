@@ -23,9 +23,9 @@ public:
     virtual CppType::SchemataMutant apiSelectSchemataMutant();
     virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppBytes);
     virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppStr);
-    virtual CppType::SchemataMutant apiSelectMutant();
+    /*virtual CppType::SchemataMutant apiSelectMutant();
     virtual CppType::SchemataMutant apiSelectMutant(CppString::CppBytes);
-    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppStr);
+    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppStr);*/
     virtual void apiBuildMutant();
     virtual void apiBuildFile();
     virtual void apiDeleteMutant();
