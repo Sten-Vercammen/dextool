@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+///------------------------------------------------------------------------------
 // Mutant schemata using Clang rewriter and RecursiveASTVisitor
 //
 // Sten Vercammem (sten.vercammen@uantwerpen.be)
@@ -17,6 +17,8 @@
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/SemaConsumer.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Rewrite/Core/Rewriter.h"
@@ -26,6 +28,7 @@
 
 
 // defines to control what happens \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\|
+bool multiAnalysePerFile = false;   // multi-analyse can create multiple AST's for the same file, use in case a file is compiled mulitple times with different flags
 // config mutant schemata
 bool ROR = true;    // Relational Operator Replacement  <,<=,>,>=,==,!=,true,false
 bool AOR = true;    // Arithmetic Operator Replacement
@@ -227,38 +230,25 @@ void writeChangedFiles(bool inPlace) {
             const clang::FileEntry *file = rewriter.getSourceMgr().getFileEntryForID(I->first);
             if (file) {
                 if (file->isValid()) {
-                    bool isSourceFile = false;
-                    // check if the edited file is one we wanted to mutate
-                    // (technically we are only changing files in SourcePaths, but somehow other files still show up in the editbuffer)
-                    for (std::string item: SourcePaths) {
-                        // are sourceFile and bufferFile equivalent (same path, takes into account different relative paths)
-                        if (llvm::sys::fs::equivalent(item, file->tryGetRealPathName())) {
-                            isSourceFile = true;
-                            break;
-                        }
-                    }
+                    // Mark changed file as visited, so we know it was changed.
+                    VisitedSourcePaths.insert(file->tryGetRealPathName());
+
+                    // include to define identifier
+                    // note: main file should contain the actual declaration (without extern)
+                    const char *include = "extern int MUTANT_NR;\n";
+                    I->second.InsertTextAfter(0, include);
                     
-                    if (isSourceFile) {
-                        // Mark changed file as visited, so we know it was changed.
-                        VisitedSourcePaths.insert(file->tryGetRealPathName());
-                        
-                        // include to define identifier
-                        // note: main file should contain the actual declaration (without extern)
-                        const char *include = "extern int MUTANT_NR;\n";
-                        I->second.InsertTextAfter(0, include);
-                        
-                        // write what's in the buffer to a temporary file
-                        // placed here to prevent writing the mutated file multiple times
-                        std::error_code error_code;
-                        //                        std::string fileName = file->getName().str() + "_mutated_" + std::to_string(mutant_count);
-                        std::string fileName = file->getName().str() + "_mutated";
-                        llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
-                        outFile << std::string(I->second.begin(), I->second.end());
-                        outFile.close();
-                        
-                        // debug output
-                        llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
-                    }
+                    // write what's in the buffer to a temporary file
+                    // placed here to prevent writing the mutated file multiple times
+                    std::error_code error_code;
+                    //                        std::string fileName = file->getName().str() + "_mutated_" + std::to_string(mutant_count);
+                    std::string fileName = file->getName().str() + "_mutated";
+                    llvm::raw_fd_ostream outFile(fileName, error_code, llvm::sys::fs::F_None);
+                    outFile << std::string(I->second.begin(), I->second.end());
+                    outFile.close();
+                    
+                    // debug output
+                    //llvm::errs() << "Mutated file: " << file->getName().str() << "\n";
                 }
             } else {
                 // not an actual file
@@ -316,7 +306,8 @@ void overWriteChangedFile() {
         // deletes the old file
         std::string oldFileName = fileName + "_mutated";
         if (std::rename(oldFileName.c_str(), fileName.c_str()) != 0) {
-            std::perror("Error renaming file");
+            std::string err = "Error renaming file, " + oldFileName + " not found";
+            std::perror(err.c_str());
         }
     }
 }
@@ -331,16 +322,27 @@ enum Singleton {
 };
 
 // actual clang functions to traverse AST \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\|
-class MutatingVisitor : public clang::RecursiveASTVisitor<MutatingVisitor> {
+class MutatingVisitor: public clang::RecursiveASTVisitor<MutatingVisitor> {
 private:
     clang::ASTContext *astContext;
     clang::PrintingPolicy pp;
+    clang::CompilerInstance *CI;
     
     bool makesSense(clang::BinaryOperator *binOp, clang::BinaryOperatorKind Opc) {
-        //TODO use sema to verify
-        return true;
+        assert(CI->hasSema() && "no Sema");
+        
+        clang::Sema &sema = CI->getSema();
+        clang::ExprResult expr = sema.BuildBinOp(sema.getCurScope(), binOp->getExprLoc(), Opc, binOp->getLHS(), binOp->getRHS());
+        //TODO sema doesn't (yet) take into account -Werror -> -Werror=type-limit
+        return !expr.isInvalid() && expr.isUsable();
     }
     
+    /**
+     * Craete meta-mutants for the operation at binOp with the provided operators in the lists
+     *
+     * Note: This funciton does not (yet) use the Lexer to retrieve the sourceText.
+     * Macro's etc. can thus be expanded, the operands might thus look slightly different than the original code
+     */
     void insertMutantSchemata(clang::BinaryOperator *binOp, std::initializer_list<clang::BinaryOperatorKind> list, std::initializer_list<Singleton> singletons) {
         // get lhs of expression
         std::string lhs;
@@ -365,11 +367,10 @@ private:
                     newExpr += clang::BinaryOperator::getOpcodeStr(elem).str();
                     newExpr += " ";
                     newExpr += rhs;
-                    newExpr += ": ";
                     
                     createAndStoreActualMutant(binOp, newExpr, endBracket);
                 } else {
-                    llvm::errs() << "new expression doesn't make sense! mutant not added\n";
+                    llvm::errs() << "mutant not addded, can't change this to: " << clang::BinaryOperator::getOpcodeStr(elem).str() << "\n";
                 }
             }
         }
@@ -379,17 +380,15 @@ private:
             switch (elem) {
                 case Singleton::LHS:
                     newExpr = lhs;
-                    newExpr += ": ";
                     break;
                 case Singleton::RHS:
                     newExpr = rhs;
-                    newExpr += ": ";
                     break;
                 case Singleton::True:
-                    newExpr = "true: ";
+                    newExpr = "true";
                     break;
                 case Singleton::False:
-                    newExpr = "false: ";
+                    newExpr = "false";
                     break;
                 default:
                     // continue for loop
@@ -398,13 +397,9 @@ private:
             // insert the singleton
             createAndStoreActualMutant(binOp, newExpr, endBracket);
         }
-        
     }
     
     void createAndStoreActualMutant(const clang::BinaryOperator *binOp, const std::string &newExpr, const std::string &endBracket) {
-        
-        
-        
         // calculate offset and FileEntry (we don't use FileID as this can change depending on the order of opening files etc.)
         const clang::FileEntry *fE;
         unsigned exprOffs, bracketsOffs;
@@ -420,33 +415,27 @@ private:
         if (it == insertedMutants.end()) {
             mutantInserts.push_back(mi);
             insertedMutants.insert(mi);
-            llvm::errs() << "inserted mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
+//            llvm::errs() << "inserted mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
             mutant_count++; //increase count as we are sure it isn't a duplicated vallid mutant
         } else {
-            llvm::errs() << "duplicate mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
+//            llvm::errs() << "duplicate mutant in FE: " << std::to_string((long)(mi->mutantLoc->fE)) << " @offset: [" << mi->mutantLoc->exprOffs << ", " << mi->mutantLoc->bracketsOffs << "] | " << mi->expr << "\n";
         }
     }
     
     /**
      * Check if we want to mutate this file.
-     * (if it's a sourceFile and we haven't yet visited it)
+     * (if it isn't a system file)
      */
     bool isfileToMutate(clang::FullSourceLoc FullLocation) {
         const clang::FileEntry *fE = SourceManager->getFileEntryForID(SourceManager->getFileID(FullLocation));
         if (fE) {
-            for (std::string item: SourcePaths) {
-                if (llvm::sys::fs::equivalent(item, fE->tryGetRealPathName())) {
-                    return true;
-                    //                    return VisitedSourcePaths.find(fE->tryGetRealPathName()) == VisitedSourcePaths.end();
-                }
-            }
+            return !SourceManager->isInSystemHeader(FullLocation) && !SourceManager->isInExternCSystemHeader(FullLocation);
         }
         return false;
     }
     
-    
 public:
-    explicit MutatingVisitor(clang::CompilerInstance *CI): astContext(&(CI->getASTContext())), pp(astContext->getLangOpts()) {
+    explicit MutatingVisitor(clang::CompilerInstance *CI): astContext(&(CI->getASTContext())), pp(astContext->getLangOpts()), CI(CI) {
         SourceManager = &astContext->getSourceManager();
     }
     
@@ -698,13 +687,17 @@ private:
 
 
 
-class MutationConsumer : public clang::ASTConsumer {
+class MutationConsumer: public clang::SemaConsumer {
 private:
     MutatingVisitor *visitor;
     
 public:
     // override in order to pass CI to custom visitor
-    explicit MutationConsumer(clang::CompilerInstance *CI): visitor(new MutatingVisitor(CI)) {}
+    explicit MutationConsumer(clang::CompilerInstance *CI): visitor(new MutatingVisitor(CI)) {
+        CI->setSema(new clang::Sema(CI->getPreprocessor(), CI->getASTContext(), *this));
+        // limit output of errors
+        CI->getSema().getDiagnostics().setErrorLimit(0);
+    }
     
     // override to call our custom visitor on the entire source file
     // Note we do this with TU as then the file is parsed, with TopLevelDecl, it's parsed whilst iterating
@@ -728,13 +721,25 @@ public:
 };
 
 
-class MutationFrontendAction : public clang::ASTFrontendAction {
+class MutationFrontendAction: public clang::ASTFrontendAction {
 public:
     virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &CI, StringRef file) {
+        // skip this entry if we only want to analyse each file once
+        // (we might miss some mutants when doing this)
+        if (!multiAnalysePerFile) {
+            if (VisitedSourcePaths.find(file) != VisitedSourcePaths.cend()) {
+                return nullptr;
+            }
+        }
+        
         // the same file can be analysed multiple times as it is possible that in one project it needs to be compiled multiple times with different flags
         llvm::errs() << "Starting to mutate the following file and all of it's includes: " << file << "\n";
         rewriter = clang::Rewriter();
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+        
+        // Mark changed file as visited
+        VisitedSourcePaths.insert(file);
+
         return std::unique_ptr<clang::ASTConsumer> (new MutationConsumer(&CI)); // pass CI pointer to ASTConsumer
     }
     
@@ -744,7 +749,12 @@ public:
             // insert mutant before orig expression
             MutantRewriter *r = (MutantRewriter*)(&rewriter);
             //mi->mutantLoc->startExpr, mi->expr);
-            r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->exprOffs, "(MUTANT_NR == " + std::to_string(localMutantCount++) + " ? "+ mi->expr);
+            std::string mutant = "(MUTANT_NR == ";
+            mutant += std::to_string(localMutantCount++);
+            mutant += " ? ";
+            mutant += mi->expr;
+            mutant += ": ";
+            r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->exprOffs, mutant);
             // insert brackets to close mutant schemata's if statement
             r->InsertText(mi->mutantLoc->fE, mi->mutantLoc->bracketsOffs, mi->brackets, true);
         }
