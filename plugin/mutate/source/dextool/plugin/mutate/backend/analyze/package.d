@@ -112,12 +112,12 @@ struct Analyzer {
             return;
 
         // TODO: this should be generic for Dextool.
-        in_file.flags.forceSystemIncludes = conf.forceSystemIncludes;
+        in_file.get.flags.forceSystemIncludes = conf.forceSystemIncludes;
 
         // find the file and flags to analyze
         Exists!AbsolutePath checked_in_file;
         try {
-            checked_in_file = makeExists(in_file.absoluteFile);
+            checked_in_file = makeExists(in_file.get.absoluteFile);
         } catch (Exception e) {
             logger.warning(e.msg);
             return;
@@ -203,7 +203,7 @@ struct Analyzer {
             if (m.whichPattern == 0)
                 continue;
 
-            mdata.put(LineMetadata(fid, t.loc.line, LineAttr(NoMut(m["tag"], m["comment"]))));
+            mdata.put(LineMetadata(fid.get, t.loc.line, LineAttr(NoMut(m["tag"], m["comment"]))));
             logger.tracef("NOMUT found at %s:%s:%s", file, t.loc.line, t.loc.column);
         }
 
