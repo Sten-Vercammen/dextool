@@ -21,12 +21,6 @@ const int ONE_CHARACTER = 1;
 
 namespace CppString {
 
-struct CppBytes {
-    uint8_t* ptr;
-    int32_t length;
-
-    void destroy();
-};
 struct CppStr{
     std::string* cppStr;
 
@@ -35,7 +29,6 @@ struct CppStr{
     void destroy();
     void put(char);
 };
-CppBytes getBytes(const char*, int);
 CppStr getStr(const char*);
 CppStr createCppStr();
 

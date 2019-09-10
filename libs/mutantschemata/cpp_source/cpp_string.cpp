@@ -13,9 +13,6 @@ String implementation for sending strings back and forth between D and C++
 
 namespace CppString {
 
-void CppBytes::destroy() {
-    delete[] ptr;
-}
 const void* CppStr::ptr() {
     return cppStr->c_str();
 }
@@ -27,16 +24,6 @@ void CppStr::destroy() {
 }
 void CppStr::put(char c){
     cppStr->append(ONE_CHARACTER, c);
-}
-CppBytes getBytes(const char* text, int length) {
-    CppBytes r;
-
-    r.ptr = new uint8_t[length];
-    r.length = length;
-
-    memcpy(r.ptr, text, length);
-
-    return r;
 }
 CppStr getStr(const char* text) {
     CppStr r;

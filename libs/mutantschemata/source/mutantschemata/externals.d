@@ -29,12 +29,6 @@ extern (C++):
 
 // External C++ string implementation
 extern (C++, CppString):
-    struct CppBytes {
-        void* ptr;
-        int length;
-
-        void destroy();
-    }
     struct CppStr {
         void* cppStr;
 
@@ -43,7 +37,6 @@ extern (C++, CppString):
         void destroy();
         void put(char);
     }
-    CppBytes getBytes();
     CppStr getStr();
     CppStr createCppStr();
 
