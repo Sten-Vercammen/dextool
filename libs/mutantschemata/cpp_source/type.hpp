@@ -24,10 +24,12 @@ struct Offset {
     uint64_t end;
 };
 struct SchemataMutant {
-    uint64_t id;
-    SourceLoc loc;
-    Offset offset;
-    //CppString::CppStr inject;
+    uint64_t id;        // primary key for db, not used
+    uint64_t mut_id;    // a way to differentiate each mutant (will be the same as x in "MUTANT_NR = x")
+    SourceLoc loc;      // for reporting purposes, specifies which line the mutant is on and where it begins
+    Offset offset;      // begin and end of where the insertion will be (Ex: a + b, the offset will specify where the + begins, and where it ends)
+    //CppString::CppStr inject;     // the characters we want to insert instead of original expression (Ex: a + b -> a - b, then this variable will be "-")
+    uint64_t status;    // status of the mutant (unknown, killed, alive, killedByCompiler, timeout)
 
     void print();
 };

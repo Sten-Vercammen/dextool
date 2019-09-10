@@ -49,4 +49,19 @@ void runSchemataCpp(SchemataApiCpp *sac, CppString::CppStr cs, CppString::CppStr
     // call setup of clang
     setupClang(argv.size() - 1, argv.data());
     fixMainFile(mainFile.cppStr->c_str());
+
+    // Simple demonstration of how to create a SchemataMutant, set the variables and insert in database
+    // NOTE: apiBuildMutant needs to be called (ONCE) in order to make sure the db has created the table
+    /*
+    CppType::SchemataMutant sm;
+    sm.mut_id = 500;
+    sm.loc = {4,5};
+    sm.offset = {0,3};
+    sm.status = 0;
+    sac->apiBuildMutant();
+    sac->apiInsertSchemataMutant(sm);
+    sm.mut_id = 365;
+    sm.status = 3;
+    sac->apiInsertSchemataMutant(sm);
+    */
 }

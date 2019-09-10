@@ -43,15 +43,11 @@ Path findIncludePath(ParseFlags pf, Path include) {
 }
 // creates an empty mutant
 SchemataMutant createSchemataMutant() {
-    return SchemataMutant(-1, SourceLoc(0,0), Offset(0,0));
+    return SchemataMutant(-1, -1, SourceLoc(0,0), Offset(0,0), 0);
 }
 SchemataMutant createSchemataMutant(SchemataMutant sm) {
     return sm;
 }
-/* will probably not use this since we insert from cpp-side
-SchemataMutant createSchemataMutant(MutationPointTbl mpt) {
-    return SchemataMutant(SourceLoc(mpt.line, mpt.column), Offset(mpt.offset_begin, mpt.offset_end), -1);
-}*/
 // sanitizes the select calls from the db.
 // returns a "fake" mutant with id = -1 if the query was empty
 SchemataMutant sanitize(T)(T[] t) {

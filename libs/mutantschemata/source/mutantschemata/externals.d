@@ -16,20 +16,11 @@ extern (C++):
     interface SchemataApiCpp {
         void apiInsertSchemataMutant(SchemataMutant);
         void apiInsertSchemataFile(SchemataFile);
-        SchemataMutant apiSelectSchemataMutant();
-        SchemataMutant apiSelectSchemataMutant(CppBytes);
         SchemataMutant apiSelectSchemataMutant(CppStr);
-        /*SchemataMutant apiSelectMutant();
-        SchemataMutant apiSelectMutant(CppBytes);
-        SchemataMutant apiSelectMutant(CppStr);*/
         void apiBuildMutant();
         void apiBuildFile();
-        void apiDeleteMutant(CppBytes);
         void apiDeleteMutant(CppStr);
-        void apiDeleteMutant(CppBytes);
-        void apiDeleteFile();
-        void apiDeleteFile(CppBytes);
-        void apiDeleteFile(CppBytes);
+        void apiDeleteFile(CppStr);
         CppStr apiFindInclude(CppStr, CppStr);
     }
 
@@ -68,10 +59,12 @@ extern (C++, CppType):
         ulong end;
     }
     struct SchemataMutant {
-        int id;         // a way to differentiate each mutant (will be the same as x in "MUTANT_NR = x")
+        ulong id;       // primary key for db, not used
+        ulong mut_id;   // a way to differentiate each mutant (will be the same as x in "MUTANT_NR = x")
         SourceLoc loc;  // for reporting purposes, specifies which line the mutant is on and where it begins
         Offset offset;  // begin and end of where the insertion will be (Ex: a + b, the offset will specify where the + begins, and where it ends)
         //CppStr inject;  // the characters we want to insert instead of original expression (Ex: a + b -> a - b, then this variable will be "-")
+        ulong status;   // status of the mutant (unknown, killed, alive, killedByCompiler, timeout)
 
         void print();   // helperfunction, only for printing when testing
     }

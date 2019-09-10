@@ -20,21 +20,13 @@ class SchemataApiCpp {
 public:
     virtual void apiInsertSchemataMutant(CppType::SchemataMutant);
     virtual void apiInsertSchemataFile(CppType::SchemataFile);
-    virtual CppType::SchemataMutant apiSelectSchemataMutant();
-    virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppBytes);
     virtual CppType::SchemataMutant apiSelectSchemataMutant(CppString::CppStr);
-    /*virtual CppType::SchemataMutant apiSelectMutant();
-    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppBytes);
-    virtual CppType::SchemataMutant apiSelectMutant(CppString::CppStr);*/
     virtual void apiBuildMutant();
     virtual void apiBuildFile();
-    virtual void apiDeleteMutant();
-    virtual void apiDeleteMutant(CppString::CppBytes);
     virtual void apiDeleteMutant(CppString::CppStr);
-    virtual void apiDeleteFile();
-    virtual void apiDeleteFile(CppString::CppBytes);
     virtual void apiDeleteFile(CppString::CppStr);
     virtual CppString::CppStr apiFindInclude(CppString::CppStr, CppString::CppStr);
+    virtual void apiClose();
 };
 
 void runSchemataCpp (SchemataApiCpp, CppString::CppStr, CppString::CppStr, CppString::CppStr);
