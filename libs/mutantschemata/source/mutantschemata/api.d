@@ -46,7 +46,7 @@ extern (C++) class SchemataApi: SchemataApiCpp {
         handler = DBHandler(si.databasePath);
         ccdb = si.compileCommand;
         ccdbPath = si.compileCommandPath;
-        mainFile = si.mainFile;
+        //mainFile = si.mainFile;
     }
 
     // Override of functions in external interface
@@ -82,6 +82,6 @@ extern (C++) class SchemataApi: SchemataApiCpp {
         files_appender.put(file);
     }
     void runSchemata() @trusted {
-        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath), dToCpp(mainFile));
+        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath)/*, dToCpp(mainFile)*/);
     }
 }

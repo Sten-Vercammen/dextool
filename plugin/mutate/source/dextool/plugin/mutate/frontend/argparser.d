@@ -49,8 +49,8 @@ struct ArgParser {
 
     struct Data {
         string[] inFiles;
-        string schemata;
-        string mainfile;
+        string analyzeSchemata;
+        //string mainfile;
 
         AbsolutePath db;
 
@@ -193,7 +193,7 @@ struct ArgParser {
         const conf_help = "load configuration (default: .dextool_mutate.toml)";
         const compiledb_help = "Retrieve compilation parameters from the file";
         const schemata_help = "Use mutantschemata while mutation testing (default: no)";
-        const main_help = "Mainfile to set MUTANT_NR in (default: none)";
+        //const main_help = "Mainfile to set MUTANT_NR in (default: none)";
 
 
         // not used but need to be here. The one used is in MiniConfig.
@@ -212,8 +212,8 @@ struct ArgParser {
                    "in", in_help, &data.inFiles,
                    "out", out_help, &workArea.rawRoot,
                    "restrict", restrict_help, &workArea.rawRestrict,
-                   "schemata", schemata_help, &data.schemata,
-                   "main", main_help, &data.mainfile,
+                   "schemata", schemata_help, &data.analyzeSchemata,
+                   //"main", main_help, &data.mainfile,
                    );
             // dfmt on
 
@@ -248,6 +248,7 @@ struct ArgParser {
             string mutationTester;
             string mutationCompile;
             string mutationTestCaseAnalyze;
+            string schemata;
             long mutationTesterRuntime;
 
             data.toolMode = ToolMode.test_mutants;
@@ -265,6 +266,7 @@ struct ArgParser {
                    "test-case-analyze-builtin", "builtin analyzer of output from testing frameworks to find failing test cases", &mutationTest.mutationTestCaseBuiltin,
                    "test-case-analyze-cmd", "program used to find what test cases killed the mutant", &mutationTestCaseAnalyze,
                    "test-timeout", "timeout to use for the test suite (msecs)", &mutationTesterRuntime,
+                   "schemata", "schemata mode for executing the mutants", &schemata,
                    );
             // dfmt on
 
@@ -276,6 +278,8 @@ struct ArgParser {
                 mutationTest.mutationTestCaseAnalyze = Path(mutationTestCaseAnalyze).AbsolutePath;
             if (mutationTesterRuntime != 0)
                 mutationTest.mutationTesterRuntime = mutationTesterRuntime.dur!"msecs";
+
+            mutationTest.schemata = (schemata.length != 0);
         }
 
         void reportG(string[] args) {

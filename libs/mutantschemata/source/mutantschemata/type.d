@@ -28,13 +28,13 @@ struct SchemataInformation {
     CompileCommandDB compileCommand;
     AbsolutePath compileCommandPath;
     bool isActive;
-    AbsolutePath mainFile;
+    //AbsolutePath mainFile;
 
-    this (AbsolutePath db, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool active, AbsolutePath main) @safe {
+    this (AbsolutePath db, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool active/*, AbsolutePath main*/) @safe {
         this.databasePath = db;
         this.compileCommand = ccdb;
         this.compileCommandPath = ccdbPath;
         this.isActive = active;
-        this.mainFile = main;
+        //this.mainFile = main;
     }
 }

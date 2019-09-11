@@ -14,6 +14,7 @@ TODO cache the checksums. They are *heavy*.
 module dextool.plugin.mutate.backend.analyze;
 
 import logger = std.experimental.logger;
+import std.typecons : Nullable;
 
 import dextool.compilation_db : CompileCommandFilter, defaultCompilerFlagFilter, CompileCommandDB;
 import dextool.set;
@@ -36,12 +37,12 @@ version (unittest) {
 /** Analyze the files in `frange` for mutations.
  */
 ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
-        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio, SchemataInformation si) @safe {
+        ref UserFileRange frange, ValidateLoc val_loc, FilesysIO fio, Nullable!SchemataInformation si) @safe {
 
     auto analyzer = Analyzer(db, val_loc, fio, conf);
     SchemataApi sa;
 
-    if (si.isActive)
+    if (!si.isNull)
         sa = makeSchemataApi(si);
 
     foreach (in_file; frange) {
@@ -52,7 +53,7 @@ ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
         }
     }
 
-    if (sa !is null) {
+    if (!si.isNull) {
         sa.runSchemata();
         sa.apiClose();
     }
