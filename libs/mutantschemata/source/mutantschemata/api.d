@@ -17,18 +17,21 @@ import mutantschemata.externals;
 import mutantschemata.utility: findInclude, sanitize, convertToFs;
 import mutantschemata.db_handler;
 import mutantschemata.type;
+import mutantschemata.execute;
 
-import dextool.type: AbsolutePath, Path;
-import dextool.plugin.mutate.backend.database: MutationPointTbl;
+import dextool.type: AbsolutePath, Path, ExitStatusType;
 import dextool.compilation_db: CompileCommandDB;
+import dextool.plugin.mutate.config: ConfigMutationTest;
+import dextool.plugin.mutate.backend.watchdog: StaticTime, ProgressivWatchdog;
 
 import std.range: front;
 import std.array: Appender, appender, array, empty, join;
+import std.datetime.stopwatch : StopWatch;
+import core.time: dur;
 
 import logger = std.experimental.logger;
 
 // Entry point for Dextool mutate
-//SchemataApi makeSchemataApi(Path db, CompileCommandDB ccdb, AbsolutePath ccdbPath) @trusted {
 SchemataApi makeSchemataApi(SchemataInformation si) @trusted {
     SchemataApi sa = new SchemataApi(si);
     return sa;
@@ -46,7 +49,6 @@ extern (C++) class SchemataApi: SchemataApiCpp {
         handler = DBHandler(si.databasePath);
         ccdb = si.compileCommand;
         ccdbPath = si.compileCommandPath;
-        //mainFile = si.mainFile;
     }
 
     // Override of functions in external interface
@@ -77,11 +79,57 @@ extern (C++) class SchemataApi: SchemataApiCpp {
     void apiClose() @trusted {
         handler.closeDB();
     }
+    // not part of api
+    SchemataMutant[] selectMutants(CppStr condition) {
+        return handler.selectFromDB!SchemataMutant(cppToD!CppStr(condition));
+    }
     // not part of api, will be called by Dextool mutate
     void addFileToMutate(Path file) @trusted {
         files_appender.put(file);
     }
-    void runSchemata() @trusted {
-        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath)/*, dToCpp(mainFile)*/);
+    void runSchemataAnalyzer() @trusted {
+        runSchemataCpp(this, dToCpp(files_appender.data.join(",")), dToCpp(ccdbPath));
     }
+}
+void setEnvironmentVariable(string value) {
+    // TODO: this does not seem to work as intended. Could as well be done on cpp-side
+    import std.process: environment;
+    try {
+        environment[MUTANT_NR] = value;
+    } catch (Exception e) {
+        logger.warning(e.msg);
+    }
+}
+/* runSchemataTester-algorithm
+0. Compile the project with all mutants inserted
+1. get all unknown mutants in db and execute them
+2. loop over all mutants
+    3. set environment variable to mutant_id
+    4. execute testsuite
+    5. parse testresult
+    6. write result in mutant.status
+7. write result to db (can be just a print for now)*/
+ExitStatusType runSchemataTester(SchemataApi sa, ConfigMutationTest mutationTest) @trusted {
+    logger.info("Preparing for mutation testing by checking that the program and tests compile without any errors (all mutants injected)");
+    auto compileResult = preCompileSut(mutationTest);
+
+    if (compileResult.status != 0) {
+        logger.info(compileResult.output);
+        logger.error("Compiler command failed: ", compileResult.status);
+        return ExitStatusType.Errors;
+    }
+    logger.warning("Compiled successfull");
+
+
+    //ProgressivWatchdog progWatchDog = preMeasureTestSuite(mutationTest);
+    //auto watchdog = StaticTime!StopWatch(1.dur!"hours");    // unreasonable time, but this is temporary (should use the timeout-algorithm in original version)
+    //SchemataMutant[] mutants = sa.selectMutants(dToCpp("status = 0"));
+
+    //foreach (m; mutants) {*/
+    import std.conv: to;
+        //setEnvironmentVariable(to!string(m.mut_id));
+        setEnvironmentVariable(to!string(55));
+        //schemataTester(mutationTest, watchdog);
+    //}
+    return ExitStatusType.Ok;
 }

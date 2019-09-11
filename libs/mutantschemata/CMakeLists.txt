@@ -46,6 +46,7 @@ set(flags "-I${CMAKE_CURRENT_LIST_DIR}/source
     -I${CMAKE_SOURCE_DIR}/libs/clang/source
     -I${CMAKE_SOURCE_DIR}/libs/libclang/source
     -I${CMAKE_SOURCE_DIR}/plugin/mutate/source
+    -J${CMAKE_SOURCE_DIR}/plugin/mutate/view
     -I${CMAKE_SOURCE_DIR}/vendor/d2sqlite3/source
     -I${CMAKE_SOURCE_DIR}/vendor/sumtype/src
     -I${CMAKE_SOURCE_DIR}/vendor/miniorm/source

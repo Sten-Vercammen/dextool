@@ -12,6 +12,8 @@ Types created for specific use in the mutant schemata API
 */
 module mutantschemata.type;
 
+import std.typecons: Tuple;
+
 import mutantschemata.externals;
 
 import dextool.type: AbsolutePath;
@@ -28,13 +30,15 @@ struct SchemataInformation {
     CompileCommandDB compileCommand;
     AbsolutePath compileCommandPath;
     bool isActive;
-    //AbsolutePath mainFile;
 
-    this (AbsolutePath db, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool active/*, AbsolutePath main*/) @safe {
+    this (AbsolutePath db, CompileCommandDB ccdb, AbsolutePath ccdbPath, bool active) @safe {
         this.databasePath = db;
         this.compileCommand = ccdb;
         this.compileCommandPath = ccdbPath;
         this.isActive = active;
-        //this.mainFile = main;
     }
 }
+
+const string MUTANT_NR = "MUTANT_NR";
+
+alias execVal = Tuple!(int, "status", string, "output");

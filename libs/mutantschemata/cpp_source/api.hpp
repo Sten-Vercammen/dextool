@@ -29,4 +29,4 @@ public:
     virtual void apiClose();
 };
 
-void runSchemataCpp (SchemataApiCpp, CppString::CppStr, CppString::CppStr/*, CppString::CppStr*/);
+void runSchemataCpp (SchemataApiCpp, CppString::CppStr, CppString::CppStr);

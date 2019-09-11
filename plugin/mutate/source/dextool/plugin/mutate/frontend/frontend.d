@@ -22,7 +22,7 @@ import dextool.plugin.mutate.type : MutationOrder, ReportKind, MutationKind,
 import dextool.plugin.mutate.config;
 import dextool.utility : asAbsNormPath;
 
-import mutantschemata : SchemataInformation;
+import mutantschemata: makeSchemataApi, runSchemataTester, SchemataInformation, SchemataApi;
 
 @safe:
 
@@ -289,17 +289,13 @@ ExitStatusType modeTestMutants(ref ArgParser conf, ref DataAccess dacc) {
     import dextool.plugin.mutate.backend : makeTestMutant;
     import std.range.primitives: empty;
 
-    ExitStatusType est = ExitStatusType.Ok;
-
     if (conf.mutationTest.schemata) {
-        import std.stdio: write, writeln;
-
-        writeln("Time for schemata execution!");
-        return est;
+        SchemataApi sa = makeSchemataApi(makeSchemataInformation(conf, dacc));
+        return runSchemataTester(sa, conf.mutationTest);
+    } else {
+        return makeTestMutant.config(conf.mutationTest).mutations(conf.data.mutation).run(dacc.db, dacc.io);
     }
 
-    return makeTestMutant.config(conf.mutationTest)
-        .mutations(conf.data.mutation).run(dacc.db, dacc.io);
 }
 
 ExitStatusType modeReport(ref ArgParser conf, ref DataAccess dacc) {
