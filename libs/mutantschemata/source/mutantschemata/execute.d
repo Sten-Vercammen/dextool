@@ -48,28 +48,6 @@ execVal preCompileSut(ConfigMutationTest mutationTest) {
     return rval;
 }
 
-Nullable!ProgressivWatchdog preMeasureTestSuite(ConfigMutationTest config) {
-    typeof (return) rval;
-
-    if (config.mutationTesterRuntime.isNull) {
-        logger.info("Measuring the time to run the tests: ", config.mutationTester);
-        auto tester = measureTestDuration(config.mutationTester);
-        if (tester.status == ExitStatusType.Ok) {
-            // The sampling of the test suite become too unreliable when the timeout is <1s.
-            // This is a quick and dirty fix.
-            // A proper fix requires an update of the sampler in runTester.
-            auto t = tester.runtime < 1.dur!"seconds" ? 1.dur!"seconds" : tester.runtime;
-            logger.info("Tester measured to: ", t);
-            rval = ProgressivWatchdog(t);
-        } else {
-            logger.error("Test suite is unreliable. It must return exit status '0' when running with unmodified mutants");
-        }
-    } else {
-        rval =  ProgressivWatchdog(config.mutationTesterRuntime.get);
-    }
-    return rval;
-}
-
 /*
 *   Test the project with the given test-script and flags.
 *   Return: Mutation.status for
@@ -121,6 +99,10 @@ struct MeasureResult {
     Duration runtime;
 }
 
+/*
+* Measures the testsuite in terms of status and duration.
+* Return: MeasureResult struct containing status and duration.
+*/
 MeasureResult measureTestDuration(ShellCommand cmd) nothrow {
     if (cmd.program.length == 0) {
         collectException(logger.error("No test suite runner specified (--mutant-tester)"));

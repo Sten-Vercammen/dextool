@@ -23,11 +23,13 @@ import dextool.type: AbsolutePath, Path, ExitStatusType;
 import dextool.compilation_db: CompileCommandDB;
 import dextool.plugin.mutate.config: ConfigMutationTest;
 import dextool.plugin.mutate.backend.watchdog: StaticTime, ProgressivWatchdog;
+//import dextool.plugin.mutate.backend.type: Mutation;
 
 import std.range: front;
 import std.array: Appender, appender, array, empty, join;
 import std.datetime.stopwatch : StopWatch;
 import core.time: dur;
+import std.conv: to;
 
 import logger = std.experimental.logger;
 
@@ -100,6 +102,40 @@ void setEnvironmentVariable(string value) {
         logger.warning(e.msg);
     }
 }
+ExitStatusType runSchemataTester(SchemataApi sa, ConfigMutationTest config) @trusted {
+    // TODO: Error handling!
+    logger.info("Preparing for mutation testing by checking that the program and tests compile without any errors (all mutants injected)");
+
+    // compile
+    auto compileResult = preCompileSut(config);
+    if (compileResult.status != 0) {
+        logger.info(compileResult.output);
+        logger.error("Compiler command failed: ", compileResult.status);
+        return ExitStatusType.Errors;
+    }
+    logger.info("Compiled successfull");
+
+    // run and measure test suite
+    auto testSuite = measureTestDuration(config.mutationTester);
+    logger.info("Test execution successfull");
+
+    // set timeout for the testsuite
+    auto watchdog = StaticTime!StopWatch(1.dur!"hours");                        // unreasonable time, but this is temporary (should use the timeout-algorithm in original version)
+
+    sa.apiBuildMutant();    // only needed for testing the selecting of mutants
+    // get all unknown mutants from db (inserted from cpp-side when created)
+    SchemataMutant[] mutants = sa.selectMutants(dToCpp("status = 0"));          // should be all mutants since no status have been set on them (except the killedByCompiler ones)
+
+    foreach (m; mutants) {
+        // set environment variable to current mutant
+        setEnvironmentVariable(to!string(m.mut_id));                            // this should activate the current mutant
+        // run the tests again
+        auto status = schemataTester(config, watchdog);        // will execute the mutant activated by the environment variable
+    }
+
+    return ExitStatusType.Ok;
+}
+
 /* runSchemataTester-algorithm
 0. Compile the project with all mutants inserted
 1. get all unknown mutants in db and execute them
@@ -109,27 +145,3 @@ void setEnvironmentVariable(string value) {
     5. parse testresult
     6. write result in mutant.status
 7. write result to db (can be just a print for now)*/
-ExitStatusType runSchemataTester(SchemataApi sa, ConfigMutationTest mutationTest) @trusted {
-    logger.info("Preparing for mutation testing by checking that the program and tests compile without any errors (all mutants injected)");
-    auto compileResult = preCompileSut(mutationTest);
-
-    if (compileResult.status != 0) {
-        logger.info(compileResult.output);
-        logger.error("Compiler command failed: ", compileResult.status);
-        return ExitStatusType.Errors;
-    }
-    logger.warning("Compiled successfull");
-
-
-    //ProgressivWatchdog progWatchDog = preMeasureTestSuite(mutationTest);
-    //auto watchdog = StaticTime!StopWatch(1.dur!"hours");    // unreasonable time, but this is temporary (should use the timeout-algorithm in original version)
-    //SchemataMutant[] mutants = sa.selectMutants(dToCpp("status = 0"));
-
-    //foreach (m; mutants) {*/
-    import std.conv: to;
-        //setEnvironmentVariable(to!string(m.mut_id));
-        setEnvironmentVariable(to!string(55));
-        //schemataTester(mutationTest, watchdog);
-    //}
-    return ExitStatusType.Ok;
-}
