@@ -51,7 +51,6 @@ struct ArgParser {
         string[] inFiles;
 	string analyzeSchemata;
 	string testSchemata;
-        //string mainfile;
 
         AbsolutePath db;
 
@@ -194,8 +193,6 @@ struct ArgParser {
         const conf_help = "load configuration (default: .dextool_mutate.toml)";
         const compiledb_help = "Retrieve compilation parameters from the file";
         const schemata_help = "Use mutantschemata while mutation testing (default: no)";
-        //const main_help = "Mainfile to set MUTANT_NR in (default: none)";
-
 
         // not used but need to be here. The one used is in MiniConfig.
         string conf_file;
@@ -214,7 +211,6 @@ struct ArgParser {
                    "out", out_help, &workArea.rawRoot,
                    "restrict", restrict_help, &workArea.rawRestrict,
                    "schemata", schemata_help, &data.analyzeSchemata,
-                   //"main", main_help, &data.mainfile,
                    );
             // dfmt on
 
