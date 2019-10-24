@@ -200,6 +200,27 @@ clang::SourceLocation getSR(std::pair<clang::SourceLocation, clang::SourceLocati
     return afterToken ? SR.second : SR.first;
 }
 
+// starting with clang 8, getLocStart is removed and replaced with getBeginLoc
+template <class T>
+clang::SourceLocation getBeginLoc(T *t) {
+#if __clang_major__ > 7
+    return t->getBeginLoc();
+#else
+    return t->getLocStart();
+#endif
+}
+
+// starting with clang 8, getLocEnd is removed and replaced with getEndLoc
+template <class T>
+clang::SourceLocation getEndLoc(T *t) {
+#if __clang_major__ > 7
+    return t->getEndLoc();
+#else
+    return t->getLocEnd();
+#endif
+}
+
+
 clang::SourceLocation getFileLocSlowCase(clang::SourceLocation Loc, bool afterToken = false) {
     do {
         if (SourceManager->isMacroArgExpansion(Loc)) {
@@ -369,8 +390,8 @@ private:
 
     std::string convertExpressionToString(clang::Expr* E) {
         clang::SourceManager& SM = astContext->getSourceManager();
-        clang::SourceLocation b = getFileLoc(E->getLocStart(), false);
-        clang::SourceLocation _e = getFileLoc(E->getLocEnd(), true);
+        clang::SourceLocation b = getFileLoc(getBeginLoc(E), false);
+        clang::SourceLocation _e = getFileLoc(getEndLoc(E), true);
         clang::SourceLocation e =
             clang::Lexer::getLocForEndOfToken(_e, 0, SM, astContext->getLangOpts());
         return std::string(SM.getCharacterData(b), SM.getCharacterData(e) - SM.getCharacterData(b));
@@ -465,9 +486,9 @@ private:
         unsigned lineStart, columnStart;
         unsigned exprOffs, bracketsOffs;
         // calculate offset for start of expression
-        calculateOffsetLoc(binOp->getLocStart(), fE, exprOffs, lineStart, columnStart);
+        calculateOffsetLoc(getBeginLoc(binOp), fE, exprOffs, lineStart, columnStart);
         // calculate offset for end of exbracketpression
-        calculateOffsetLoc(binOp->getLocEnd(), fE, bracketsOffs, lineStart, columnStart, true);
+        calculateOffsetLoc(getEndLoc(binOp), fE, bracketsOffs, lineStart, columnStart, true);
 
         unsigned changeOffsStart, changeOffsEnd;
 
@@ -483,7 +504,7 @@ private:
         case Singleton::LHS:
             // keep the LHS, replace "+ b"
             calculateOffsetLoc(binOp->getExprLoc(), fE, changeOffsStart, lineStart, columnStart);
-            calculateOffsetLoc(binOp->getLocEnd(), fE, changeOffsEnd, lineStart, columnStart, true);
+            calculateOffsetLoc(getEndLoc(binOp), fE, changeOffsEnd, lineStart, columnStart, true);
             break;
         case Singleton::RHS:
             // keep the RHS, replace "a +"
@@ -549,8 +570,8 @@ private:
         unsigned startOffs, endOffs;
         unsigned lineStart, columnStart;
         unsigned lineEnd, columnEnd;
-        calculateOffsetLoc(declOrSmtm->getLocStart(), fE, startOffs, lineStart, columnStart);
-        calculateOffsetLoc(declOrSmtm->getLocEnd(), fE, endOffs, lineEnd, columnEnd, true);
+        calculateOffsetLoc(getBeginLoc(declOrSmtm), fE, startOffs, lineStart, columnStart);
+        calculateOffsetLoc(getBeginLoc(declOrSmtm), fE, endOffs, lineEnd, columnEnd, true);
 
         std::map<const clang::FileEntry*, std::set<ConstLoc, ConstLoc>*>::iterator it =
             excludedLocs.find(fE);
@@ -616,7 +637,7 @@ public:
     }
 
     virtual bool VisitStmt(clang::Stmt* s) {
-        clang::FullSourceLoc FullLocation = astContext->getFullLoc(s->getLocStart());
+        clang::FullSourceLoc FullLocation = astContext->getFullLoc(getBeginLoc(s));
         if (!isfileToMutate(FullLocation)) {
             return true;
         }
@@ -951,7 +972,7 @@ class MutationFrontendAction : public clang::ASTFrontendAction {
 
 public:
     virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI,
-                                                                  clang::StringRef file) {
+                                                                  StringRef file) {
         // skip this entry if we only want to analyse each file once
         // (we might miss some mutants when doing this)
         if (!multiAnalysePerFile) {
