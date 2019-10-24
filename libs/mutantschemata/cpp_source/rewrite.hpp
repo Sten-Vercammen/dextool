@@ -146,7 +146,7 @@ static inline bool isWhitespaceExceptNL(unsigned char c) {
 
 class MutantRewriter : public clang::Rewriter {
 public:
-    bool InsertText(const clang::FileEntry* fE, unsigned StartOffs, StringRef Str,
+    bool InsertText(const clang::FileEntry* fE, unsigned StartOffs, clang::StringRef Str,
                     bool InsertAfter = true, bool indentNewLines = false) {
         clang::FileID FID = this->getSourceMgr().translateFile(fE);
         if (!FID.getHashValue()) {
@@ -155,8 +155,8 @@ public:
         }
 
         llvm::SmallString<128> indentedStr;
-        if (indentNewLines && Str.find('\n') != StringRef::npos) {
-            StringRef MB = this->getSourceMgr().getBufferData(FID);
+        if (indentNewLines && Str.find('\n') != clang::StringRef::npos) {
+            clang::StringRef MB = this->getSourceMgr().getBufferData(FID);
 
             unsigned lineNo = this->getSourceMgr().getLineNumber(FID, StartOffs) - 1;
             const clang::SrcMgr::ContentCache* Content =
@@ -164,7 +164,7 @@ public:
             unsigned lineOffs = Content->SourceLineCache[lineNo];
 
             // Find the whitespace at the start of the line.
-            StringRef indentSpace;
+            clang::StringRef indentSpace;
             {
                 unsigned i = lineOffs;
                 while (isWhitespaceExceptNL(MB[i]))
@@ -172,7 +172,7 @@ public:
                 indentSpace = MB.substr(lineOffs, i - lineOffs);
             }
 
-            llvm::SmallVector<StringRef, 4> lines;
+            llvm::SmallVector<clang::StringRef, 4> lines;
             Str.split(lines, "\n");
 
             for (unsigned i = 0, e = lines.size(); i != e; ++i) {
@@ -951,7 +951,7 @@ class MutationFrontendAction : public clang::ASTFrontendAction {
 
 public:
     virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance& CI,
-                                                                  StringRef file) {
+                                                                  clang::StringRef file) {
         // skip this entry if we only want to analyse each file once
         // (we might miss some mutants when doing this)
         if (!multiAnalysePerFile) {
