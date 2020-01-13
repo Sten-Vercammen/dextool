@@ -571,7 +571,7 @@ private:
         unsigned lineStart, columnStart;
         unsigned lineEnd, columnEnd;
         calculateOffsetLoc(getBeginLoc(declOrSmtm), fE, startOffs, lineStart, columnStart);
-        calculateOffsetLoc(getBeginLoc(declOrSmtm), fE, endOffs, lineEnd, columnEnd, true);
+        calculateOffsetLoc(getEndLoc(declOrSmtm), fE, endOffs, lineEnd, columnEnd, true);
 
         std::map<const clang::FileEntry*, std::set<ConstLoc, ConstLoc>*>::iterator it =
             excludedLocs.find(fE);
