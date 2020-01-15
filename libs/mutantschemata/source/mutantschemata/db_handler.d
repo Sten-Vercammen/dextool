@@ -56,4 +56,8 @@ struct DBHandler {
     void closeDB() {
         db.close();
     }
+
+    auto transaction() {
+        return db.transaction;
+    }
 }

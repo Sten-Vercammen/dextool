@@ -290,10 +290,10 @@ ExitStatusType modeTestMutants(ref ArgParser conf, ref DataAccess dacc) {
     import std.range.primitives: empty;
 
     if (!conf.data.testSchemata.empty) {
-	SchemataApi sa = makeSchemataApi(makeSchemataInformation(conf, dacc));
-	ExitStatusType est = runSchemataTester(sa, conf.mutationTest);
-	sa.apiClose();
-	return est;
+        SchemataApi sa = makeSchemataApi(makeSchemataInformation(conf, dacc));
+        ExitStatusType est = runSchemataTester(sa, conf.mutationTest);
+        sa.apiClose();
+        return est;
     } else {
         return makeTestMutant.config(conf.mutationTest).mutations(conf.data.mutation).run(dacc.db, dacc.io);
     }
@@ -319,21 +319,24 @@ Nullable!SchemataInformation makeSchemataInformation(ref ArgParser conf, ref Dat
     import dextool.type: Path;
 
     typeof(return) rval;
-    import std.stdio: writeln;
-
     if (!conf.data.analyzeSchemata.empty) {
+        if (conf.compileDb.dbs.empty)
+            logger.error("Faulty configuration (are you in the correct directory?)");
+        else {
+            rval = SchemataInformation(
+                AbsolutePath(Path(conf.data.db)),
+                dacc.fusedCompileDb,
+                AbsolutePath(Path(conf.compileDb.dbs[0])),
+                !conf.data.analyzeSchemata.empty
+            );
+        }
+    } else if (!conf.data.testSchemata.empty) {
         rval = SchemataInformation(
             AbsolutePath(Path(conf.data.db)),
             dacc.fusedCompileDb,
-            AbsolutePath(Path(conf.compileDb.dbs[0])),
-            !conf.data.analyzeSchemata.empty);
-    } else if (!conf.data.testSchemata.empty) {
-      rval = SchemataInformation(
-            AbsolutePath(Path(conf.data.db)),
-            dacc.fusedCompileDb,
             AbsolutePath(Path("")),
-            !conf.data.testSchemata.empty);
+            !conf.data.testSchemata.empty
+        );
     }
-
     return rval;
 }

@@ -22,10 +22,13 @@ import dextool.type : AbsolutePath, Path, ExitStatusType;
 import dextool.compilation_db : CompileCommandDB;
 import dextool.plugin.mutate.config : ConfigMutationTest;
 import dextool.plugin.mutate.backend.watchdog : StaticTime, ProgressivWatchdog;
+import dextool.plugin.mutate.backend.type : Mutation;
 
 import std.array : Appender, join;
 import std.conv : to;
 import std.datetime.stopwatch : StopWatch;
+import std.format : format;
+
 import core.time : dur;
 
 import logger = std.experimental.logger;
@@ -89,6 +92,10 @@ extern (C++) class SchemataApi : SchemataApiCpp {
         handler.insertOrReplaceInDB(sm);
     }
 
+    auto transaction() {
+        return handler.transaction;
+    }
+
     void addFileToMutate(Path file) @trusted {
         files_appender.put(file);
     }
@@ -127,15 +134,23 @@ ExitStatusType runSchemataTester(SchemataApi sa, ConfigMutationTest config) @tru
     auto stopWatch = StaticTime!StopWatch(timeout.dur!"msecs");
     auto mutants = sa.selectUnknownMutants();
 
+    auto trans = sa.transaction;
+
     // Set environment variable, run the tests again and update the mutant
     foreach (m; mutants) {
         auto envRes = setEnvironmentVariable(dToCpp(MUTANT_NR), dToCpp(to!string(m.mut_id)));
         if (envRes != 0)
             return stopSchemata("Setting environment variable MUTANT_NR failed");
 
+        // removing the comments below will provide more informational output, but slow down the testexecution.
+        //logger.info(format!"Testing mutant %s"(m.mut_id));
         m.status = schemataTester(config, stopWatch);
+        //logger.info(format!"Status: %s"(m.status.to!(Mutation.Status)));
+
         sa.updateMutant(m);
     }
+
+    trans.commit;
 
     logger.info("All unknown mutants tested!");
     return ExitStatusType.Ok;

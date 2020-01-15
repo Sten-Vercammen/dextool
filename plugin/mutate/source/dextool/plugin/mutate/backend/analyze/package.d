@@ -54,7 +54,7 @@ ExitStatusType runAnalyzer(ref Database db, ConfigCompiler conf,
     }
 
     if (!si.isNull) {
-	sa.runSchemataAnalyzer(val_loc.getOutputDir());
+	    sa.runSchemataAnalyzer(val_loc.getOutputDir());
         sa.apiClose();
     }
 
